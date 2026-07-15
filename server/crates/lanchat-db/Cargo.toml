@@ -1,0 +1,12 @@
+[package]
+name = "lanchat-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tokio.workspace = true
+sqlx.workspace = true
+fred.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
