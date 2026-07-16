@@ -246,8 +246,24 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
         }
     } else if payload.receiver_type == "group" {
         // 群组消息：发送给群组所有在线成员（除了发送者）
-        // TODO: 实现群组成员查询和广播
-        tracing::debug!("群组消息广播待实现");
+        if let Ok(group_uuid) = Uuid::parse_str(&payload.receiver_id) {
+            match lanchat_core::services::group::get_member_ids(&state.db, &group_uuid).await {
+                Ok(member_ids) => {
+                    let conns = state.connections.read().await;
+                    for mid in &member_ids {
+                        let mid_str = mid.to_string();
+                        if mid_str != sender_id {
+                            if let Some(tx) = conns.get(&mid_str) {
+                                let _ = tx.send(Message::Text(new_msg_text.clone().into()));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("获取群组成员失败: {}", e);
+                }
+            }
+        }
     }
 }
 

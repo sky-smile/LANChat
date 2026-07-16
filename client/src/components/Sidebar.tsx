@@ -30,7 +30,6 @@ function Sidebar() {
   const currentConversation = useChatStore((state) => state.currentConversation);
   const setCurrentConversation = useChatStore((state) => state.setCurrentConversation);
   const addConversation = useChatStore((state) => state.addConversation);
-  const updateConversationName = useChatStore((state) => state.updateConversationName);
 
   // 搜索用户
   const handleSearch = useCallback((value: string) => {

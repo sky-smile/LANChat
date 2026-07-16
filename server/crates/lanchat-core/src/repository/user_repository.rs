@@ -55,3 +55,19 @@ pub async fn search_users(pool: &PgPool, query: &str, exclude_id: &Uuid, limit: 
     .fetch_all(pool)
     .await
 }
+
+/// 更新用户资料
+pub async fn update_profile(
+    pool: &PgPool,
+    user_id: &Uuid,
+    display_name: Option<&str>,
+) -> Result<Option<User>, sqlx::Error> {
+    sqlx::query_as::<_, User>(
+        "UPDATE users SET display_name = $1, updated_at = NOW() WHERE id = $2 \
+         RETURNING id, username, password_hash, display_name, avatar_url, department, role, status, last_seen_at, created_at, updated_at",
+    )
+    .bind(display_name)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+}

@@ -68,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let protected_routes = Router::new()
         .nest("/api/auth", routes::auth::auth_protected_routes())
         .nest("/api/messages", routes::messages::message_routes())
+        .nest("/api/groups", routes::groups::group_routes())
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::auth::auth_middleware,

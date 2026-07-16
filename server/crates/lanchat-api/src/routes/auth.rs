@@ -23,7 +23,7 @@ pub fn auth_routes() -> Router<AppState> {
 /// 需要认证的路由
 pub fn auth_protected_routes() -> Router<AppState> {
     Router::new()
-        .route("/me", get(me_handler))
+        .route("/me", get(me_handler).put(update_me_handler))
         .route("/search", get(search_users_handler))
 }
 
@@ -64,6 +64,34 @@ async fn me_handler(
     let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
         .await?
         .ok_or(AppError(ApiError::NotFound("用户不存在".to_string())))?;
+
+    Ok(Json(ApiResponse::success(user)))
+}
+
+/// 更新用户资料请求
+#[derive(serde::Deserialize)]
+struct UpdateMeRequest {
+    display_name: Option<String>,
+}
+
+/// 更新当前用户资料
+async fn update_me_handler(
+    State(state): State<AppState>,
+    axum::extract::Extension(user_id): axum::extract::Extension<String>,
+    Json(req): Json<UpdateMeRequest>,
+) -> Result<Json<ApiResponse<lanchat_core::models::User>>, AppError> {
+    let uid = Uuid::parse_str(&user_id).map_err(|e| {
+        AppError(ApiError::AuthError(lanchat_common::error::AuthError::TokenError(e.to_string())))
+    })?;
+
+    let user = lanchat_core::repository::user_repository::update_profile(
+        &state.db,
+        &uid,
+        req.display_name.as_deref(),
+    )
+    .await
+    .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+    .ok_or(AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
     Ok(Json(ApiResponse::success(user)))
 }

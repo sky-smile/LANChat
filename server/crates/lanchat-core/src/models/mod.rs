@@ -34,6 +34,16 @@ pub struct Group {
     pub created_at: DateTime<Utc>,
 }
 
+/// 群组成员模型
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct GroupMember {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+    pub role: String,
+    pub joined_at: DateTime<Utc>,
+}
+
 /// 消息模型
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Message {
