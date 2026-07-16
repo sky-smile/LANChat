@@ -28,4 +28,5 @@ uuid.workspace = true
 fred.workspace = true
 sqlx.workspace = true
 futures-util.workspace = true
+chrono.workspace = true
 image.workspace = true

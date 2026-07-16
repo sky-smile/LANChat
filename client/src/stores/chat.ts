@@ -37,6 +37,7 @@ interface ChatState {
   updateContactStatus: (userId: string, status: string) => void;
   addConversation: (conversation: Conversation) => void;
   updateConversationName: (id: string, name: string) => void;
+  markConversationRead: (userId: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -144,5 +145,22 @@ export const useChatStore = create<ChatState>((set) => ({
         c.id === id ? { ...c, name } : c,
       ),
     }));
+  },
+
+  markConversationRead: (userId) => {
+    set((state) => {
+      const convMessages = state.messages[userId];
+      if (!convMessages) return state;
+      // 将我发给该用户的消息标记为已读
+      const updatedMessages = convMessages.map((msg) =>
+        msg.receiverId === userId && !msg.isRead ? { ...msg, isRead: true } : msg,
+      );
+      return {
+        messages: {
+          ...state.messages,
+          [userId]: updatedMessages,
+        },
+      };
+    });
   },
 }));

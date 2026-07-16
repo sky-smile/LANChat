@@ -22,7 +22,7 @@ function Chat() {
   );
   const conversations = useChatStore((state) => state.conversations);
   const currentUserId = useAuthStore((state) => state.user?.id);
-  const { sendMessage } = useWebSocket();
+  const { sendMessage, sendMarkRead } = useWebSocket();
 
   const currentConv = conversations.find((c) => c.id === currentConversation);
 
@@ -64,6 +64,13 @@ function Chat() {
 
     loadHistory();
   }, [currentConversation]);
+
+  // 打开对话时发送已读回执
+  useEffect(() => {
+    if (!currentConversation) return;
+    sendMarkRead(currentConversation);
+    useChatStore.getState().markAsRead(currentConversation);
+  }, [currentConversation, sendMarkRead]);
 
   const handleSend = () => {
     const text = inputValue.trim();
@@ -248,11 +255,18 @@ function Chat() {
               {!isOwn && <Avatar size="small" icon={<UserOutlined />} />}
               <div className={`message-bubble ${isOwn ? 'bubble-own' : 'bubble-other'}`}>
                 {renderMessageContent(msg)}
-                <div className="message-time">
-                  {new Date(msg.createdAt).toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                <div className="message-meta">
+                  <span className="message-time">
+                    {new Date(msg.createdAt).toLocaleTimeString('zh-CN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                  {isOwn && (
+                    <span className={`message-status ${msg.isRead ? 'status-read' : 'status-sent'}`}>
+                      {msg.isRead ? '✓✓' : '✓'}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

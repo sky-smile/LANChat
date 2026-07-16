@@ -31,6 +31,13 @@ interface PresencePayload {
   status: string;
 }
 
+interface ReadReceiptPayload {
+  reader_id: string;
+  sender_id: string;
+  receiver_type: string;
+  read_at: string;
+}
+
 interface TypingPayload {
   sender_id: string;
   receiver_id: string;
@@ -67,6 +74,17 @@ export function useWebSocket() {
         console.log('[WS] 认证成功', msg.payload);
         reconnectAttemptsRef.current = 0;
         updateUserStatus('online');
+        // WS 连接就绪后，为当前会话发送已读回执（解决时序问题）
+        {
+          const currentConv = useChatStore.getState().currentConversation;
+          if (currentConv) {
+            console.log('[WS] 连接就绪，发送 mark_read', currentConv);
+            wsRef.current?.send(JSON.stringify({
+              type: 'mark_read',
+              payload: { sender_id: currentConv, receiver_type: 'user' },
+            }));
+          }
+        }
         break;
 
       case 'auth_error':
@@ -112,6 +130,13 @@ export function useWebSocket() {
       case 'typing': {
         const typing = msg.payload as TypingPayload;
         console.log(`[WS] ${typing.sender_id} 正在输入...`);
+        break;
+      }
+
+      case 'read_receipt': {
+        const receipt = msg.payload as ReadReceiptPayload;
+        // 标记我发给该用户的消息为已读
+        useChatStore.getState().markConversationRead(receipt.reader_id);
         break;
       }
 
@@ -259,9 +284,23 @@ export function useWebSocket() {
     [send],
   );
 
+  const sendMarkRead = useCallback(
+    (senderId: string, receiverType = 'user') => {
+      send({
+        type: 'mark_read',
+        payload: {
+          sender_id: senderId,
+          receiver_type: receiverType,
+        },
+      });
+    },
+    [send],
+  );
+
   return {
     send,
     sendMessage,
     sendTyping,
+    sendMarkRead,
   };
 }

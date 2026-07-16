@@ -52,6 +52,14 @@ pub enum WsMessage {
     /// 心跳响应
     #[serde(rename = "pong")]
     Pong,
+
+    /// 标记消息已读（客户端发送）
+    #[serde(rename = "mark_read")]
+    MarkRead(MarkReadPayload),
+
+    /// 已读回执通知（服务端推送给消息发送者）
+    #[serde(rename = "read_receipt")]
+    ReadReceipt(ReadReceiptPayload),
 }
 
 /// 认证载荷
@@ -131,6 +139,28 @@ pub struct PresencePayload {
 pub struct ErrorPayload {
     pub code: i32,
     pub message: String,
+}
+
+/// 标记消息已读载荷（客户端发送）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarkReadPayload {
+    /// 发送者 ID（即哪些消息被标记为已读）
+    pub sender_id: String,
+    /// 接收者类型：user 或 group
+    pub receiver_type: String,
+}
+
+/// 已读回执载荷（服务端推送给消息发送者）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadReceiptPayload {
+    /// 谁读了消息
+    pub reader_id: String,
+    /// 读的是谁发的消息（即当前用户）
+    pub sender_id: String,
+    /// 消息类型：user 或 group
+    pub receiver_type: String,
+    /// 已读时间
+    pub read_at: DateTime<Utc>,
 }
 
 impl WsMessage {

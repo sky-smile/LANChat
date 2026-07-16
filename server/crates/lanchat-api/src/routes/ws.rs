@@ -161,6 +161,9 @@ async fn handle_text_message(state: &AppState, user_id: &str, text: &str) {
         WsMessage::Typing(payload) => {
             handle_typing(state, user_id, payload).await;
         }
+        WsMessage::MarkRead(payload) => {
+            handle_mark_read(state, user_id, payload).await;
+        }
         WsMessage::Ping => {
             let conns = state.connections.read().await;
             if let Some(tx) = conns.get(user_id) {
@@ -276,6 +279,45 @@ async fn handle_typing(state: &AppState, sender_id: &str, payload: TypingPayload
             ..payload
         });
         let _ = tx.send(Message::Text(typing.to_json().into()));
+    }
+}
+
+/// 处理标记已读
+async fn handle_mark_read(state: &AppState, reader_id: &str, payload: MarkReadPayload) {
+    let reader_uuid = match Uuid::parse_str(reader_id) {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+    let sender_uuid = match Uuid::parse_str(&payload.sender_id) {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+
+    // 标记数据库中的消息为已读
+    if let Err(e) = lanchat_core::services::message::mark_read(
+        &state.db,
+        &reader_uuid,
+        &sender_uuid,
+    )
+    .await
+    {
+        tracing::error!("标记消息已读失败: {}", e);
+        return;
+    }
+
+    // 通知消息发送者：你的消息已被阅读
+    let read_at = chrono::Utc::now();
+    let receipt = WsMessage::ReadReceipt(ReadReceiptPayload {
+        reader_id: reader_id.to_string(),
+        sender_id: payload.sender_id.clone(),
+        receiver_type: payload.receiver_type.clone(),
+        read_at,
+    });
+    let receipt_text = receipt.to_json();
+
+    let conns = state.connections.read().await;
+    if let Some(tx) = conns.get(&payload.sender_id) {
+        let _ = tx.send(Message::Text(receipt_text.into()));
     }
 }
 

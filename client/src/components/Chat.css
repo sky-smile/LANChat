@@ -80,12 +80,38 @@
 .message-time {
   font-size: 11px;
   opacity: 0.7;
-  margin-top: 4px;
   text-align: right;
 }
 
-.bubble-own .message-time {
+.message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.message-status {
+  font-size: 11px;
+  letter-spacing: -2px;
+}
+
+.status-sent {
+  opacity: 0.7;
+}
+
+.status-read {
+  color: #52c41a;
+  font-weight: 600;
+}
+
+.bubble-own .message-time,
+.bubble-own .message-status {
   color: rgba(255, 255, 255, 0.8);
+}
+
+.bubble-own .status-read {
+  color: #b7eb8f;
 }
 
 .bubble-other .message-time {
