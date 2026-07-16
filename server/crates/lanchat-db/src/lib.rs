@@ -1,3 +1,4 @@
-//! LANChat 数据库连接和迁移
+//! LANChat 数据库连接管理
 
 pub mod pool;
+pub mod redis;

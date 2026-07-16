@@ -10,9 +10,9 @@ CREATE TABLE users (
     department VARCHAR(100),
     role VARCHAR(20) DEFAULT 'user',
     status VARCHAR(20) DEFAULT 'offline',
-    last_seen_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    last_seen_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 索引

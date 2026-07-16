@@ -8,7 +8,7 @@ CREATE TABLE messages (
     message_type VARCHAR(20) NOT NULL,
     metadata JSONB,
     is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 索引

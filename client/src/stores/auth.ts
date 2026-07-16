@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import api from '@/services/api';
 
 export interface User {
   id: string;
@@ -18,6 +19,12 @@ interface AuthState {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   setUser: (user: User) => void;
+  updateUserStatus: (status: string) => void;
+}
+
+interface LoginResponse {
+  token: string;
+  user: User;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -28,23 +35,15 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
 
       login: async (username: string, password: string) => {
-        // TODO: 实现实际的登录 API 调用
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username, password }),
+        const response = await api.post<{ code: number; data: LoginResponse }>('/auth/login', {
+          username,
+          password,
         });
 
-        if (!response.ok) {
-          throw new Error('登录失败');
-        }
-
-        const data = await response.json();
+        const { token, user } = response.data.data;
         set({
-          token: data.token,
-          user: data.user,
+          token,
+          user,
           isAuthenticated: true,
         });
       },
@@ -59,6 +58,12 @@ export const useAuthStore = create<AuthState>()(
 
       setUser: (user: User) => {
         set({ user });
+      },
+
+      updateUserStatus: (status: string) => {
+        set((state) => ({
+          user: state.user ? { ...state.user, status } : null,
+        }));
       },
     }),
     {

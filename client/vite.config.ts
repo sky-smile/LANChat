@@ -15,6 +15,13 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {

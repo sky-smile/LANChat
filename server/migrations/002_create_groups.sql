@@ -7,7 +7,7 @@ CREATE TABLE groups (
     group_type VARCHAR(20) DEFAULT 'normal',
     max_members INT DEFAULT 500,
     created_by UUID REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 群组成员表
@@ -16,7 +16,7 @@ CREATE TABLE group_members (
     group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     role VARCHAR(20) DEFAULT 'member',
-    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    joined_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(group_id, user_id)
 );
 

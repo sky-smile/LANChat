@@ -1,0 +1,298 @@
+//! WebSocket 连接处理
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use axum::extract::ws::{Message, WebSocket};
+use axum::extract::{State, WebSocketUpgrade};
+use axum::response::IntoResponse;
+use futures_util::{SinkExt, StreamExt};
+use tokio::sync::{mpsc, RwLock};
+use uuid::Uuid;
+
+use fred::interfaces::KeysInterface;
+use lanchat_common::auth::verify_token;
+use lanchat_common::protocol::*;
+
+use crate::AppState;
+
+/// 在线用户连接映射：user_id -> 消息发送器
+pub type Connections = Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>;
+
+/// 创建连接管理器
+pub fn create_connections() -> Connections {
+    Arc::new(RwLock::new(HashMap::new()))
+}
+
+/// WebSocket 升级处理
+pub async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, state))
+}
+
+/// 处理单个 WebSocket 连接
+async fn handle_socket(socket: WebSocket, state: AppState) {
+    let (mut sender, mut receiver) = socket.split();
+    let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+
+    // 认证阶段：等待第一条 auth 消息
+    let user_id = match receiver.next().await {
+        Some(Ok(Message::Text(text))) => {
+            match WsMessage::from_json(&text) {
+                Ok(WsMessage::Auth(auth)) => {
+                    match verify_token(&auth.token, &state.jwt_secret) {
+                        Ok(claims) => {
+                            // 认证成功
+                            let user_id = claims.sub.clone();
+
+                            // 从数据库获取用户名
+                            let display_name = if let Ok(uid) = Uuid::parse_str(&user_id) {
+                                lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+                                    .await
+                                    .ok()
+                                    .flatten()
+                                    .and_then(|u| u.display_name)
+                                    .unwrap_or_else(|| user_id.clone())
+                            } else {
+                                user_id.clone()
+                            };
+
+                            let auth_ok = WsMessage::AuthOk(AuthOkPayload {
+                                user_id: user_id.clone(),
+                                username: display_name,
+                            });
+                            let _ = tx.send(Message::Text(auth_ok.to_json().into()));
+                            user_id
+                        }
+                        Err(e) => {
+                            let err = WsMessage::AuthError(ErrorPayload {
+                                code: 401,
+                                message: format!("认证失败: {}", e),
+                            });
+                            let _ = tx.send(Message::Text(err.to_json().into()));
+                            return;
+                        }
+                    }
+                }
+                _ => {
+                    let err = WsMessage::AuthError(ErrorPayload {
+                        code: 400,
+                        message: "首条消息必须是 auth 类型".to_string(),
+                    });
+                    let _ = tx.send(Message::Text(err.to_json().into()));
+                    return;
+                }
+            }
+        }
+        _ => return, // 连接立即关闭
+    };
+
+    // 注册连接
+    {
+        let mut conns = state.connections.write().await;
+        // 如果同一用户已有连接，关闭旧连接
+        if let Some(old_tx) = conns.insert(user_id.clone(), tx.clone()) {
+            let _ = old_tx.send(Message::Close(None));
+        }
+    }
+
+    // 更新用户在线状态
+    update_user_status(&state, &user_id, "online").await;
+
+    // 广播上线通知
+    broadcast_presence(&state, &user_id, "online", Some(&user_id)).await;
+
+    // 发送消息的任务
+    let send_task = tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            if sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // 接收消息的任务
+    let recv_state = state.clone();
+    let recv_user_id = user_id.clone();
+    let recv_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            match msg {
+                Message::Text(text) => {
+                    handle_text_message(&recv_state, &recv_user_id, &text).await;
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    // 等待任一任务完成
+    tokio::select! {
+        _ = send_task => {},
+        _ = recv_task => {},
+    }
+
+    // 清理：移除连接，更新离线状态
+    {
+        let mut conns = state.connections.write().await;
+        conns.remove(&user_id);
+    }
+
+    update_user_status(&state, &user_id, "offline").await;
+    broadcast_presence(&state, &user_id, "offline", None).await;
+}
+
+/// 处理文本消息
+async fn handle_text_message(state: &AppState, user_id: &str, text: &str) {
+    let msg = match WsMessage::from_json(text) {
+        Ok(msg) => msg,
+        Err(e) => {
+            tracing::warn!("解析 WebSocket 消息失败: {}", e);
+            return;
+        }
+    };
+
+    match msg {
+        WsMessage::SendMessage(payload) => {
+            handle_send_message(state, user_id, payload).await;
+        }
+        WsMessage::Typing(payload) => {
+            handle_typing(state, user_id, payload).await;
+        }
+        WsMessage::Ping => {
+            let conns = state.connections.read().await;
+            if let Some(tx) = conns.get(user_id) {
+                let _ = tx.send(Message::Text(WsMessage::Pong.to_json().into()));
+            }
+        }
+        _ => {
+            tracing::debug!("收到未处理的消息类型: {:?}", msg);
+        }
+    }
+}
+
+/// 处理发送消息
+async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMessagePayload) {
+    let sender_uuid = match Uuid::parse_str(sender_id) {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+    let receiver_uuid = match Uuid::parse_str(&payload.receiver_id) {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+
+    // 保存消息到数据库
+    let message = match lanchat_core::services::message::send_message(
+        &state.db,
+        &sender_uuid,
+        &receiver_uuid,
+        &payload.receiver_type,
+        &payload.content,
+        &payload.message_type,
+        payload.metadata.as_ref(),
+    )
+    .await
+    {
+        Ok(msg) => msg,
+        Err(e) => {
+            tracing::error!("保存消息失败: {}", e);
+            return;
+        }
+    };
+
+    // 获取发送者名称
+    let sender_name = lanchat_core::repository::user_repository::find_by_id(&state.db, &sender_uuid)
+        .await
+        .ok()
+        .flatten()
+        .map(|u| u.display_name.unwrap_or(u.username))
+        .unwrap_or_else(|| sender_id.to_string());
+
+    // 发送确认给发送者
+    {
+        let conns = state.connections.read().await;
+        if let Some(tx) = conns.get(sender_id) {
+            let ack = WsMessage::MessageAck(MessageAckPayload {
+                client_msg_id: payload.client_msg_id,
+                server_msg_id: message.id.to_string(),
+                created_at: message.created_at,
+            });
+            let _ = tx.send(Message::Text(ack.to_json().into()));
+        }
+    }
+
+    // 构造新消息通知
+    let new_msg = WsMessage::NewMessage(NewMessagePayload {
+        id: message.id.to_string(),
+        sender_id: sender_id.to_string(),
+        sender_name,
+        receiver_id: payload.receiver_id.clone(),
+        receiver_type: payload.receiver_type.clone(),
+        content: payload.content,
+        message_type: payload.message_type,
+        metadata: payload.metadata,
+        created_at: message.created_at,
+    });
+    let new_msg_text = new_msg.to_json();
+
+    if payload.receiver_type == "user" {
+        // 一对一消息：发送给接收者
+        let conns = state.connections.read().await;
+        if let Some(tx) = conns.get(&payload.receiver_id) {
+            let _ = tx.send(Message::Text(new_msg_text.into()));
+        }
+    } else if payload.receiver_type == "group" {
+        // 群组消息：发送给群组所有在线成员（除了发送者）
+        // TODO: 实现群组成员查询和广播
+        tracing::debug!("群组消息广播待实现");
+    }
+}
+
+/// 处理正在输入
+async fn handle_typing(state: &AppState, sender_id: &str, payload: TypingPayload) {
+    let conns = state.connections.read().await;
+    if let Some(tx) = conns.get(&payload.receiver_id) {
+        let typing = WsMessage::Typing(TypingPayload {
+            sender_id: sender_id.to_string(),
+            ..payload
+        });
+        let _ = tx.send(Message::Text(typing.to_json().into()));
+    }
+}
+
+/// 更新用户在线状态
+async fn update_user_status(state: &AppState, user_id: &str, status: &str) {
+    if let Ok(uid) = Uuid::parse_str(user_id) {
+        // 更新数据库
+        let _ = sqlx::query(
+            "UPDATE users SET status = $1, last_seen_at = NOW() WHERE id = $2",
+        )
+        .bind(status)
+        .bind(uid)
+        .execute(&state.db)
+        .await;
+
+        // 更新 Redis
+        let key = format!("user:status:{}", user_id);
+        let _: Result<(), _> = state.redis.set(&key, status, None, None, false).await;
+    }
+}
+
+/// 广播在线状态
+async fn broadcast_presence(state: &AppState, user_id: &str, status: &str, exclude: Option<&str>) {
+    let presence = WsMessage::Presence(PresencePayload {
+        user_id: user_id.to_string(),
+        status: status.to_string(),
+    });
+    let text = presence.to_json();
+
+    let conns = state.connections.read().await;
+    for (uid, tx) in conns.iter() {
+        if Some(uid.as_str()) != exclude {
+            let _ = tx.send(Message::Text(text.clone().into()));
+        }
+    }
+}

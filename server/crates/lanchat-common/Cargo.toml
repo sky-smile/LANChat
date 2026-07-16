@@ -13,3 +13,4 @@ uuid.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 rand.workspace = true
+sqlx.workspace = true
