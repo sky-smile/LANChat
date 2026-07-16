@@ -93,7 +93,6 @@
 
 .message-status {
   font-size: 11px;
-  letter-spacing: -2px;
 }
 
 .status-sent {
@@ -102,7 +101,6 @@
 
 .status-read {
   color: #52c41a;
-  font-weight: 600;
 }
 
 .bubble-own .message-time,

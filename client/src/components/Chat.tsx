@@ -264,7 +264,7 @@ function Chat() {
                   </span>
                   {isOwn && (
                     <span className={`message-status ${msg.isRead ? 'status-read' : 'status-sent'}`}>
-                      {msg.isRead ? '✓✓' : '✓'}
+                      {msg.isRead ? '已读' : '未读'}
                     </span>
                   )}
                 </div>
