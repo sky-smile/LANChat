@@ -1,0 +1,120 @@
+/* 语音通话遮罩层 */
+.voice-call-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 通话卡片 */
+.voice-call-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 20px;
+  padding: 40px 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-width: 300px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+/* 头像区域 */
+.voice-call-avatar {
+  margin-bottom: 8px;
+}
+
+.voice-call-avatar .ant-avatar {
+  background: linear-gradient(135deg, #1890ff, #36cfc9);
+  box-shadow: 0 4px 20px rgba(24, 144, 255, 0.4);
+}
+
+/* 来电时头像呼吸动画 */
+.voice-call-overlay .voice-call-avatar {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* 对方名称 */
+.voice-call-name {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* 状态文字 */
+.voice-call-status {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+/* 按钮容器 */
+.voice-call-actions {
+  display: flex;
+  gap: 32px;
+  margin-top: 8px;
+}
+
+/* 通话按钮基础样式 */
+.call-btn {
+  width: 56px !important;
+  height: 56px !important;
+  font-size: 22px !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
+}
+
+.call-btn:hover {
+  transform: scale(1.1);
+}
+
+/* 接听按钮 */
+.call-btn-accept {
+  background: #52c41a !important;
+  box-shadow: 0 4px 15px rgba(82, 196, 26, 0.4) !important;
+}
+
+.call-btn-accept:hover {
+  background: #73d13d !important;
+}
+
+/* 拒接/挂断按钮 */
+.call-btn-reject,
+.call-btn-hangup {
+  background: #ff4d4f !important;
+  box-shadow: 0 4px 15px rgba(255, 77, 79, 0.4) !important;
+}
+
+.call-btn-reject:hover,
+.call-btn-hangup:hover {
+  background: #ff7875 !important;
+}
+
+/* 静音按钮 */
+.call-btn-unmuted {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+}
+
+.call-btn-muted {
+  background: #faad14 !important;
+  box-shadow: 0 4px 15px rgba(250, 173, 20, 0.3) !important;
+}

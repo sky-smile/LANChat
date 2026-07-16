@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Input, Button, Empty, Avatar, Typography, Progress, message as antMessage } from 'antd';
-import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined } from '@ant-design/icons';
+import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, PhoneOutlined } from '@ant-design/icons';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { getInitiateCall } from '@/hooks/useWebRTC';
 import api from '@/services/api';
 import './Chat.css';
 
@@ -25,6 +26,17 @@ function Chat() {
   const { sendMessage, sendMarkRead } = useWebSocket();
 
   const currentConv = conversations.find((c) => c.id === currentConversation);
+
+  // 发起语音通话
+  const handleVoiceCall = () => {
+    if (!currentConversation || !currentConv) return;
+    const initiate = getInitiateCall();
+    if (initiate) {
+      initiate(currentConversation, currentConv.name);
+    } else {
+      antMessage.warning('通话功能未就绪，请稍后重试');
+    }
+  };
 
   // 自动滚动到底部
   useEffect(() => {
@@ -244,6 +256,13 @@ function Chat() {
         <div className="chat-header-info">
           <Text strong>{currentConv?.name || currentConversation}</Text>
         </div>
+        <Button
+          type="text"
+          icon={<PhoneOutlined />}
+          className="voice-call-btn"
+          onClick={handleVoiceCall}
+          title="语音通话"
+        />
       </div>
 
       {/* 消息列表 */}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
+import { dispatchCallSignaling } from './callSignalingBus';
 
 // WebSocket 消息类型
 interface WsMessage {
@@ -49,8 +50,9 @@ const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const PING_INTERVAL = 30000;
 
-export function useWebSocket() {
-  const wsRef = useRef<WebSocket | null>(null);
+export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | null>) {
+  const internalWsRef = useRef<WebSocket | null>(null);
+  const wsRef = externalWsRef || internalWsRef;
   const reconnectAttemptsRef = useRef(0);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval>>();
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
@@ -66,6 +68,8 @@ export function useWebSocket() {
 
   // 处理消息的 ref，避免 stale closure
   const handleMessageRef = useRef<(msg: WsMessage) => void>();
+
+
 
   // 更新消息处理器
   handleMessageRef.current = (msg: WsMessage) => {
@@ -145,6 +149,16 @@ export function useWebSocket() {
 
       case 'error':
         console.error('[WS] 错误', msg.payload);
+        break;
+
+      // 通话信令消息：转发给 useWebRTC 处理
+      case 'call_invite':
+      case 'call_status':
+      case 'call_offer':
+      case 'call_answer':
+      case 'call_ice':
+        console.log('[WS] 收到通话信令:', msg.type, msg.payload);
+        dispatchCallSignaling(msg);
         break;
 
       default:

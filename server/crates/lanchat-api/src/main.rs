@@ -1,4 +1,7 @@
 use axum::Router;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -7,6 +10,13 @@ mod error;
 mod middleware;
 mod routes;
 
+/// 通话信息
+#[derive(Clone, Debug)]
+pub struct CallInfo {
+    pub caller_id: String,
+    pub callee_id: String,
+}
+
 /// 应用状态
 #[derive(Clone)]
 pub struct AppState {
@@ -14,6 +24,8 @@ pub struct AppState {
     pub redis: fred::clients::RedisClient,
     pub jwt_secret: String,
     pub connections: routes::ws::Connections,
+    /// 活跃通话映射：call_id -> CallInfo
+    pub active_calls: Arc<RwLock<HashMap<String, CallInfo>>>,
 }
 
 #[tokio::main]
@@ -49,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
         redis: redis_client,
         jwt_secret,
         connections: routes::ws::create_connections(),
+        active_calls: Arc::new(RwLock::new(HashMap::new())),
     };
 
     // CORS 配置

@@ -60,6 +60,40 @@ pub enum WsMessage {
     /// 已读回执通知（服务端推送给消息发送者）
     #[serde(rename = "read_receipt")]
     ReadReceipt(ReadReceiptPayload),
+
+    // ---- WebRTC 语音通话信令 ----
+
+    /// 发起通话邀请（呼叫方 → 服务端 → 被叫方）
+    #[serde(rename = "call_invite")]
+    CallInvite(CallInvitePayload),
+
+    /// 被叫方接听（被叫方 → 服务端 → 呼叫方）
+    #[serde(rename = "call_accept")]
+    CallAccept(CallAcceptPayload),
+
+    /// 被叫方拒接（被叫方 → 服务端 → 呼叫方）
+    #[serde(rename = "call_reject")]
+    CallReject(CallRejectPayload),
+
+    /// 挂断通话（任一方 → 服务端 → 对方）
+    #[serde(rename = "call_hangup")]
+    CallHangup(CallHangupPayload),
+
+    /// WebRTC SDP Offer（呼叫方 → 服务端 → 被叫方）
+    #[serde(rename = "call_offer")]
+    CallOffer(CallSdpPayload),
+
+    /// WebRTC SDP Answer（被叫方 → 服务端 → 呼叫方）
+    #[serde(rename = "call_answer")]
+    CallAnswer(CallSdpPayload),
+
+    /// ICE Candidate 交换（双向）
+    #[serde(rename = "call_ice")]
+    CallIce(CallIcePayload),
+
+    /// 通话状态通知（服务端 → 双方）
+    #[serde(rename = "call_status")]
+    CallStatus(CallStatusPayload),
 }
 
 /// 认证载荷
@@ -161,6 +195,92 @@ pub struct ReadReceiptPayload {
     pub receiver_type: String,
     /// 已读时间
     pub read_at: DateTime<Utc>,
+}
+
+// ---- WebRTC 语音通话信令载荷 ----
+
+/// 通话邀请载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallInvitePayload {
+    /// 通话唯一标识
+    pub call_id: String,
+    /// 呼叫方用户 ID
+    pub caller_id: String,
+    /// 呼叫方显示名称
+    pub caller_name: String,
+    /// 被叫方用户 ID
+    pub callee_id: String,
+}
+
+/// 通话接听载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallAcceptPayload {
+    /// 通话唯一标识
+    pub call_id: String,
+    /// 接听方用户 ID
+    pub user_id: String,
+}
+
+/// 通话拒接载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallRejectPayload {
+    /// 通话唯一标识
+    pub call_id: String,
+    /// 拒接方用户 ID
+    pub user_id: String,
+}
+
+/// 挂断通话载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallHangupPayload {
+    /// 通话唯一标识
+    pub call_id: String,
+    /// 挂断方用户 ID
+    pub user_id: String,
+}
+
+/// WebRTC SDP 载荷（用于 Offer 和 Answer）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallSdpPayload {
+    /// 通话唯一标识
+    pub call_id: String,
+    /// 发送方用户 ID
+    pub sender_id: String,
+    /// 接收方用户 ID
+    pub receiver_id: String,
+    /// SDP 类型：offer 或 answer
+    pub sdp_type: String,
+    /// SDP 内容
+    pub sdp: String,
+}
+
+/// ICE Candidate 载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallIcePayload {
+    /// 通话唯一标识
+    pub call_id: String,
+    /// 发送方用户 ID
+    pub sender_id: String,
+    /// 接收方用户 ID
+    pub receiver_id: String,
+    /// ICE candidate 字符串
+    pub candidate: String,
+    /// SDP mid
+    pub sdp_mid: String,
+    /// SDP m-line index
+    pub sdp_m_line_index: u16,
+}
+
+/// 通话状态载荷（服务端推送给双方）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallStatusPayload {
+    /// 通话唯一标识
+    pub call_id: String,
+    /// 状态：ringing, connected, ended, rejected
+    pub status: String,
+    /// 可选的状态消息
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 impl WsMessage {

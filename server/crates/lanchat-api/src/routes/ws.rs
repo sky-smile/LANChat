@@ -164,6 +164,30 @@ async fn handle_text_message(state: &AppState, user_id: &str, text: &str) {
         WsMessage::MarkRead(payload) => {
             handle_mark_read(state, user_id, payload).await;
         }
+        WsMessage::CallInvite(payload) => {
+            handle_call_invite(state, user_id, payload).await;
+        }
+        WsMessage::CallAccept(payload) => {
+            handle_call_accept(state, user_id, payload).await;
+        }
+        WsMessage::CallReject(payload) => {
+            handle_call_reject(state, user_id, payload).await;
+        }
+        WsMessage::CallHangup(payload) => {
+            handle_call_hangup(state, user_id, payload).await;
+        }
+        WsMessage::CallOffer(payload) => {
+            let receiver_id = payload.receiver_id.clone();
+            handle_call_sdp_forward(state, &receiver_id, WsMessage::CallOffer(payload)).await;
+        }
+        WsMessage::CallAnswer(payload) => {
+            let receiver_id = payload.receiver_id.clone();
+            handle_call_sdp_forward(state, &receiver_id, WsMessage::CallAnswer(payload)).await;
+        }
+        WsMessage::CallIce(payload) => {
+            let receiver_id = payload.receiver_id.clone();
+            handle_call_ice_forward(state, &receiver_id, payload).await;
+        }
         WsMessage::Ping => {
             let conns = state.connections.read().await;
             if let Some(tx) = conns.get(user_id) {
@@ -318,6 +342,153 @@ async fn handle_mark_read(state: &AppState, reader_id: &str, payload: MarkReadPa
     let conns = state.connections.read().await;
     if let Some(tx) = conns.get(&payload.sender_id) {
         let _ = tx.send(Message::Text(receipt_text.into()));
+    }
+}
+
+// ---- WebRTC 语音通话信令处理 ----
+
+/// 处理通话邀请：转发给被叫方
+async fn handle_call_invite(state: &AppState, caller_id: &str, payload: CallInvitePayload) {
+    let callee_id = &payload.callee_id;
+    tracing::info!("收到通话邀请: caller={}, callee={}, call_id={}", caller_id, callee_id, payload.call_id);
+
+    // 记录活跃通话
+    state.active_calls.write().await.insert(
+        payload.call_id.clone(),
+        crate::CallInfo {
+            caller_id: caller_id.to_string(),
+            callee_id: callee_id.clone(),
+        },
+    );
+
+    // 检查被叫方是否在线
+    let conns = state.connections.read().await;
+    if let Some(tx) = conns.get(callee_id) {
+        // 转发邀请给被叫方
+        let invite = WsMessage::CallInvite(payload.clone());
+        let _ = tx.send(Message::Text(invite.to_json().into()));
+
+        // 通知呼叫方：对方正在响铃
+        if let Some(caller_tx) = conns.get(caller_id) {
+            let status = WsMessage::CallStatus(CallStatusPayload {
+                call_id: payload.call_id.clone(),
+                status: "ringing".to_string(),
+                message: None,
+            });
+            let _ = caller_tx.send(Message::Text(status.to_json().into()));
+        }
+    } else {
+        // 被叫方不在线，通知呼叫方
+        if let Some(caller_tx) = conns.get(caller_id) {
+            let status = WsMessage::CallStatus(CallStatusPayload {
+                call_id: payload.call_id,
+                status: "ended".to_string(),
+                message: Some("对方不在线".to_string()),
+            });
+            let _ = caller_tx.send(Message::Text(status.to_json().into()));
+        }
+    }
+}
+
+/// 处理通话接听：通知呼叫方对方已接听
+async fn handle_call_accept(state: &AppState, _user_id: &str, payload: CallAcceptPayload) {
+    // 查找通话的另一方（呼叫方）
+    let caller_id = {
+        let calls = state.active_calls.read().await;
+        calls.get(&payload.call_id).map(|c| c.caller_id.clone())
+    };
+
+    if let Some(caller_id) = caller_id {
+        let conns = state.connections.read().await;
+        // 通知呼叫方：通话已接通
+        if let Some(tx) = conns.get(&caller_id) {
+            let status = WsMessage::CallStatus(CallStatusPayload {
+                call_id: payload.call_id.clone(),
+                status: "connected".to_string(),
+                message: None,
+            });
+            let _ = tx.send(Message::Text(status.to_json().into()));
+        }
+        // 通知接听方：通话已接通
+        if let Some(tx) = conns.get(&payload.user_id) {
+            let status = WsMessage::CallStatus(CallStatusPayload {
+                call_id: payload.call_id.clone(),
+                status: "connected".to_string(),
+                message: None,
+            });
+            let _ = tx.send(Message::Text(status.to_json().into()));
+        }
+    }
+}
+
+/// 处理通话拒接：通知呼叫方
+async fn handle_call_reject(state: &AppState, _user_id: &str, payload: CallRejectPayload) {
+    // 查找呼叫方（通过 active_calls 映射）
+    let caller_id = {
+        let calls = state.active_calls.read().await;
+        calls.get(&payload.call_id).map(|c| c.caller_id.clone())
+    };
+
+    if let Some(caller_id) = caller_id {
+        let conns = state.connections.read().await;
+        if let Some(tx) = conns.get(&caller_id) {
+            let status = WsMessage::CallStatus(CallStatusPayload {
+                call_id: payload.call_id.clone(),
+                status: "rejected".to_string(),
+                message: None,
+            });
+            let _ = tx.send(Message::Text(status.to_json().into()));
+        }
+    }
+
+    // 清理通话记录
+    state.active_calls.write().await.remove(&payload.call_id);
+}
+
+/// 处理挂断：通知对方通话结束
+async fn handle_call_hangup(state: &AppState, user_id: &str, payload: CallHangupPayload) {
+    // 查找通话的另一方
+    let other_id = {
+        let calls = state.active_calls.read().await;
+        calls.get(&payload.call_id).map(|info| {
+            if info.caller_id == user_id {
+                info.callee_id.clone()
+            } else {
+                info.caller_id.clone()
+            }
+        })
+    };
+
+    if let Some(other_id) = other_id {
+        let conns = state.connections.read().await;
+        if let Some(tx) = conns.get(&other_id) {
+            let status = WsMessage::CallStatus(CallStatusPayload {
+                call_id: payload.call_id.clone(),
+                status: "ended".to_string(),
+                message: None,
+            });
+            let _ = tx.send(Message::Text(status.to_json().into()));
+        }
+    }
+
+    // 清理通话记录
+    state.active_calls.write().await.remove(&payload.call_id);
+}
+
+/// 转发 SDP（Offer/Answer）给对方
+async fn handle_call_sdp_forward(state: &AppState, receiver_id: &str, msg: WsMessage) {
+    let conns = state.connections.read().await;
+    if let Some(tx) = conns.get(receiver_id) {
+        let _ = tx.send(Message::Text(msg.to_json().into()));
+    }
+}
+
+/// 转发 ICE Candidate 给对方
+async fn handle_call_ice_forward(state: &AppState, receiver_id: &str, payload: CallIcePayload) {
+    let conns = state.connections.read().await;
+    if let Some(tx) = conns.get(receiver_id) {
+        let ice = WsMessage::CallIce(payload);
+        let _ = tx.send(Message::Text(ice.to_json().into()));
     }
 }
 
