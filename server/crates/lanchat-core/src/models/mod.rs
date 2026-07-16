@@ -57,3 +57,17 @@ pub struct Message {
     pub is_read: bool,
     pub created_at: DateTime<Utc>,
 }
+
+/// 文件模型
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct File {
+    pub id: Uuid,
+    pub original_name: String,
+    pub stored_name: String,
+    pub mime_type: String,
+    pub file_size: i64,
+    pub storage_path: String,
+    pub thumbnail_path: Option<String>,
+    pub uploader_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}

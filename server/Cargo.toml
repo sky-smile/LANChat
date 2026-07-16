@@ -19,7 +19,7 @@ repository = "https://github.com/sky-smile/LANChat"
 tokio = { version = "1", features = ["full"] }
 
 # Web 框架
-axum = { version = "0.7", features = ["ws", "macros"] }
+axum = { version = "0.7", features = ["ws", "macros", "multipart"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = { version = "0.4", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
@@ -56,3 +56,6 @@ dotenvy = "0.15"
 # 工具
 rand = "0.8"
 futures-util = "0.3"
+
+# 文件处理
+image = "0.25"

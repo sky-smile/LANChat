@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Input, Button, Empty, Avatar, Typography } from 'antd';
-import { SendOutlined, UserOutlined } from '@ant-design/icons';
+import { Input, Button, Empty, Avatar, Typography, Progress, message as antMessage } from 'antd';
+import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined } from '@ant-design/icons';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -11,7 +11,10 @@ const { Text } = Typography;
 
 function Chat() {
   const [inputValue, setInputValue] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentConversation = useChatStore((state) => state.currentConversation);
   const messages = useChatStore((state) =>
@@ -91,6 +94,133 @@ function Chat() {
     }
   };
 
+  // 处理文件选择
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentConversation) return;
+
+    // 检查文件大小 (最大 50MB)
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      antMessage.error('文件大小不能超过 50MB');
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // 创建 FormData
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // 上传文件
+      const response = await api.post('/files/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(percent);
+          }
+        },
+      });
+
+      const fileData = response.data.data;
+      if (!fileData) {
+        throw new Error('上传响应数据为空');
+      }
+
+      // 判断是图片还是文件
+      const isImage = fileData.mime_type?.startsWith('image/');
+      const messageType = isImage ? 'image' : 'file';
+
+      // 构造消息内容
+      const content = isImage
+        ? `[图片] ${fileData.original_name}`
+        : `[文件] ${fileData.original_name}`;
+
+      // 构造 metadata
+      const metadata = {
+        fileId: fileData.id,
+        fileName: fileData.original_name,
+        fileSize: fileData.file_size,
+        mimeType: fileData.mime_type,
+        thumbnailPath: fileData.thumbnail_path,
+      };
+
+      // 发送文件消息
+      const clientId = sendMessage(currentConversation, 'user', content, messageType, metadata);
+
+      // 乐观添加消息到本地
+      useChatStore.getState().addMessage(currentConversation, {
+        id: clientId,
+        senderId: currentUserId || '',
+        receiverId: currentConversation,
+        receiverType: 'user',
+        content,
+        messageType: messageType as 'text' | 'image' | 'file' | 'system',
+        metadata,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        clientId,
+      });
+
+      antMessage.success('文件上传成功');
+    } catch (err) {
+      console.error('文件上传失败', err);
+      antMessage.error('文件上传失败');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      // 清空文件输入
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // 渲染消息内容
+  const renderMessageContent = (msg: {
+    messageType: string;
+    content: string;
+    metadata?: Record<string, unknown>;
+  }) => {
+    if (msg.messageType === 'image' && msg.metadata?.fileId) {
+      return (
+        <div className="message-image">
+          <img
+            src={`/api/storage/${msg.metadata.fileId as string}/thumbnail`}
+            alt={msg.metadata.fileName as string}
+            onClick={() => window.open(`/api/storage/${msg.metadata?.fileId as string}`)}
+            style={{ maxWidth: '200px', maxHeight: '200px', cursor: 'pointer' }}
+          />
+          <div className="message-content">{msg.content}</div>
+        </div>
+      );
+    }
+
+    if (msg.messageType === 'file' && msg.metadata?.fileId) {
+      const fileSize = msg.metadata.fileSize as number;
+      const sizeStr = fileSize > 1024 * 1024
+        ? `${(fileSize / (1024 * 1024)).toFixed(1)} MB`
+        : `${(fileSize / 1024).toFixed(1)} KB`;
+
+      return (
+        <div className="message-file" onClick={() => window.open(`/api/storage/${msg.metadata?.fileId as string}`)}>
+          <FileOutlined className="file-icon" />
+          <div className="file-info">
+            <div className="file-name">{msg.metadata.fileName as string}</div>
+            <div className="file-size">{sizeStr}</div>
+          </div>
+        </div>
+      );
+    }
+
+    return <div className="message-content">{msg.content}</div>;
+  };
+
   if (!currentConversation) {
     return (
       <div className="chat-container">
@@ -117,7 +247,7 @@ function Chat() {
             <div key={msg.id} className={`message-row ${isOwn ? 'message-own' : 'message-other'}`}>
               {!isOwn && <Avatar size="small" icon={<UserOutlined />} />}
               <div className={`message-bubble ${isOwn ? 'bubble-own' : 'bubble-other'}`}>
-                <div className="message-content">{msg.content}</div>
+                {renderMessageContent(msg)}
                 <div className="message-time">
                   {new Date(msg.createdAt).toLocaleTimeString('zh-CN', {
                     hour: '2-digit',
@@ -131,8 +261,28 @@ function Chat() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* 上传进度 */}
+      {uploading && (
+        <div className="upload-progress">
+          <Progress percent={uploadProgress} size="small" status="active" />
+          <Text type="secondary">正在上传文件...</Text>
+        </div>
+      )}
+
       {/* 输入区域 */}
       <div className="chat-input">
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
+        <Button
+          icon={<PaperClipOutlined />}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          title="发送文件"
+        />
         <Input.TextArea
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
@@ -145,7 +295,7 @@ function Chat() {
           type="primary"
           icon={<SendOutlined />}
           onClick={handleSend}
-          disabled={!inputValue.trim()}
+          disabled={!inputValue.trim() || uploading}
         >
           发送
         </Button>

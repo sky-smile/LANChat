@@ -62,13 +62,15 @@ async fn main() -> anyhow::Result<()> {
     let public_routes = Router::new()
         .route("/health", axum::routing::get(|| async { "OK" }))
         .route("/api/ws", axum::routing::get(routes::ws::ws_handler))
-        .nest("/api/auth", routes::auth::auth_routes());
+        .nest("/api/auth", routes::auth::auth_routes())
+        .nest("/api/storage", routes::files::file_public_routes());
 
     // 受保护路由（需要认证）
     let protected_routes = Router::new()
         .nest("/api/auth", routes::auth::auth_protected_routes())
         .nest("/api/messages", routes::messages::message_routes())
         .nest("/api/groups", routes::groups::group_routes())
+        .nest("/api/files", routes::files::file_routes())
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::auth::auth_middleware,

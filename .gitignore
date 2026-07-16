@@ -43,3 +43,4 @@ docker/data/
 *.dylib
 *.o
 *.a
+server/uploads/

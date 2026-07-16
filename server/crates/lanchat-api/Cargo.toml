@@ -28,3 +28,4 @@ uuid.workspace = true
 fred.workspace = true
 sqlx.workspace = true
 futures-util.workspace = true
+image.workspace = true
