@@ -103,8 +103,21 @@ async fn main() -> anyhow::Result<()> {
             middleware::auth::auth_middleware,
         ));
 
+    // 管理员路由（需要认证 + 管理员权限）
+    let admin_routes = Router::new()
+        .nest("/api/admin", routes::admin::admin_routes())
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::admin::admin_middleware,
+        ))
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::auth::auth_middleware,
+        ));
+
     let app = public_routes
         .merge(protected_routes)
+        .merge(admin_routes)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);

@@ -3,7 +3,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use lanchat_common::error::ApiError;
+use lanchat_common::error::{ApiError, AuthError};
 use lanchat_common::types::ApiResponse;
 
 /// API 错误包装类型（用于实现 IntoResponse）
@@ -13,6 +13,12 @@ pub struct AppError(pub ApiError);
 impl From<ApiError> for AppError {
     fn from(err: ApiError) -> Self {
         AppError(err)
+    }
+}
+
+impl From<AuthError> for AppError {
+    fn from(err: AuthError) -> Self {
+        AppError(ApiError::AuthError(err))
     }
 }
 
@@ -31,7 +37,13 @@ impl IntoResponse for AppError {
                 tracing::error!("数据库错误: {:?}", e);
                 (StatusCode::INTERNAL_SERVER_ERROR, "服务器内部错误".to_string())
             }
-            ApiError::AuthError(e) => (StatusCode::UNAUTHORIZED, e.to_string()),
+            ApiError::AuthError(e) => {
+                let status = match &e {
+                    lanchat_common::error::AuthError::Forbidden => StatusCode::FORBIDDEN,
+                    _ => StatusCode::UNAUTHORIZED,
+                };
+                (status, e.to_string())
+            }
             ApiError::InternalError(msg) => {
                 tracing::error!("内部错误: {}", msg);
                 (StatusCode::INTERNAL_SERVER_ERROR, "服务器内部错误".to_string())

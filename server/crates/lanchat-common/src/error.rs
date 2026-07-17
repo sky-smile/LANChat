@@ -13,6 +13,8 @@ pub enum AuthError {
     InvalidCredentials,
     #[error("未授权")]
     Unauthorized,
+    #[error("权限不足")]
+    Forbidden,
 }
 
 /// API 错误

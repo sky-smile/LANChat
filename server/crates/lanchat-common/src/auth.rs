@@ -14,6 +14,7 @@ use crate::error::AuthError;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
+    pub role: String,
     pub exp: usize,
     pub iat: usize,
 }
@@ -41,10 +42,11 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 }
 
 /// 生成 JWT Token
-pub fn generate_token(user_id: &str, secret: &str) -> Result<String, AuthError> {
+pub fn generate_token(user_id: &str, role: &str, secret: &str) -> Result<String, AuthError> {
     let now = Utc::now();
     let claims = Claims {
         sub: user_id.to_string(),
+        role: role.to_string(),
         exp: (now + Duration::hours(24)).timestamp() as usize,
         iat: now.timestamp() as usize,
     };

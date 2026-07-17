@@ -46,7 +46,7 @@ pub async fn login(
     }
 
     // 生成 Token
-    let token = auth::generate_token(&user.id.to_string(), jwt_secret)?;
+    let token = auth::generate_token(&user.id.to_string(), &user.role, jwt_secret)?;
 
     Ok(AuthResponse { token, user })
 }
@@ -74,7 +74,7 @@ pub async fn register(
     let user = repository::user_repository::create_user(pool, username, &password_hash, display_name).await?;
 
     // 生成 Token
-    let token = auth::generate_token(&user.id.to_string(), jwt_secret)?;
+    let token = auth::generate_token(&user.id.to_string(), &user.role, jwt_secret)?;
 
     Ok(AuthResponse { token, user })
 }

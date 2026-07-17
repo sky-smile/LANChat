@@ -1,0 +1,22 @@
+.admin-page {
+  padding: 24px;
+  background: #f5f5f5;
+  min-height: 100%;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.admin-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.admin-header h2 svg {
+  margin-right: 8px;
+}

@@ -8,6 +8,7 @@ import {
   UserOutlined,
   SearchOutlined,
   TeamOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
@@ -104,6 +105,15 @@ function Sidebar() {
       icon: <SettingOutlined />,
       label: '设置',
     },
+    ...(user?.role === 'admin'
+      ? [
+          {
+            key: '/admin',
+            icon: <SafetyOutlined />,
+            label: '管理',
+          },
+        ]
+      : []),
   ];
 
   const userMenuItems = [
