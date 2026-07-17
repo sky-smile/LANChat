@@ -150,6 +150,36 @@
   background: #666;
 }
 
+/* 折叠模式紧凑会话列表 */
+.conversation-list-compact {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.conversation-item-compact {
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.conversation-item-compact:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.conversation-item-compact.active {
+  background: rgba(24, 144, 255, 0.2);
+}
+}
+
 .conversation-info {
   flex: 1;
   min-width: 0;

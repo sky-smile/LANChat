@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Layout, Form, Input, Button, Avatar, message, Divider, Card } from 'antd';
-import { UserOutlined, SaveOutlined } from '@ant-design/icons';
+import { Layout, Form, Input, Button, Avatar, message, Card, Switch, Tag, Descriptions, Typography } from 'antd';
+import { UserOutlined, SaveOutlined, BellOutlined, ApiOutlined, InfoCircleOutlined } from '@ant-design/icons';
+
+const { Text } = Typography;
 import { useAuthStore } from '@/stores/auth';
 import api from '@/services/api';
 import './Settings.css';
@@ -11,6 +13,9 @@ function Settings() {
   const { user, setUser } = useAuthStore();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [notifySound, setNotifySound] = useState(() => {
+    return localStorage.getItem('lanchat-notify-sound') !== 'off';
+  });
 
   useEffect(() => {
     if (user) {
@@ -43,13 +48,19 @@ function Settings() {
     }
   };
 
+  const handleNotifyChange = (checked: boolean) => {
+    setNotifySound(checked);
+    localStorage.setItem('lanchat-notify-sound', checked ? 'on' : 'off');
+    message.success(checked ? '已开启消息提示音' : '已关闭消息提示音');
+  };
+
   return (
     <Content className="settings-page">
       <div className="settings-header">
         <h2>设置</h2>
       </div>
       <div className="settings-content">
-        <Card title="个人资料" className="settings-card">
+        <Card title={<><UserOutlined /> 个人资料</>} className="settings-card">
           <div className="settings-avatar">
             <Avatar size={80} icon={<UserOutlined />} src={user?.avatarUrl} />
           </div>
@@ -68,13 +79,37 @@ function Settings() {
           </Form>
         </Card>
 
-        <Divider />
+        <Card title={<><BellOutlined /> 通知设置</>} className="settings-card">
+          <div className="settings-row">
+            <div className="settings-row-info">
+              <div className="settings-row-title">消息提示音</div>
+              <div className="settings-row-desc">收到新消息时播放提示音</div>
+            </div>
+            <Switch checked={notifySound} onChange={handleNotifyChange} />
+          </div>
+        </Card>
 
-        <Card title="关于" className="settings-card">
+        <Card title={<><ApiOutlined /> 连接状态</>} className="settings-card">
+          <Descriptions column={1} size="small">
+            <Descriptions.Item label="服务器地址">
+              {window.location.hostname}:3000
+            </Descriptions.Item>
+            <Descriptions.Item label="连接状态">
+              <Tag color="green">已连接</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="用户 ID">
+              <Text copyable={{ text: user?.id }} className="settings-mono">
+                {user?.id?.slice(0, 8)}...
+              </Text>
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+
+        <Card title={<><InfoCircleOutlined /> 关于</>} className="settings-card">
           <div className="settings-about">
-            <p><strong>LANChat</strong> v0.1.0</p>
-            <p>局域网聊天软件 - 企业内部即时通讯</p>
-            <p>技术栈：Rust + React + Tauri</p>
+            <p><strong>LANChat</strong> <Tag>v0.1.0</Tag></p>
+            <p>局域网安全即时通讯</p>
+            <p className="settings-tech">Rust + React + Tauri</p>
           </div>
         </Card>
       </div>

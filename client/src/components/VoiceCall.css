@@ -128,3 +128,27 @@
   max-width: 280px;
   margin: 4px 0;
 }
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .voice-call-card {
+    padding: 32px 24px;
+    min-width: unset;
+    width: min(320px, 90vw);
+    border-radius: 16px;
+  }
+
+  .voice-call-name {
+    font-size: 18px;
+  }
+
+  .call-btn {
+    width: 48px !important;
+    height: 48px !important;
+    font-size: 18px !important;
+  }
+
+  .voice-call-actions {
+    gap: 24px;
+  }
+}

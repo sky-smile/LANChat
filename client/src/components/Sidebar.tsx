@@ -238,6 +238,32 @@ function Sidebar() {
         </div>
       )}
 
+      {/* 折叠模式：显示紧凑会话列表 */}
+      {collapsed && location.pathname === '/' && conversations.length > 0 && (
+        <div className="conversation-list-compact">
+          {conversations.map((conv) => {
+            const isGroup = conv.type === 'group';
+            return (
+              <div
+                key={conv.id}
+                className={`conversation-item-compact ${conv.id === currentConversation ? 'active' : ''}`}
+                onClick={() => handleConversationClick(conv.id)}
+                title={conv.name}
+              >
+                <Badge count={conv.unreadCount} size="small" offset={[-6, 0]}>
+                  <Avatar
+                    icon={isGroup ? <TeamOutlined /> : <UserOutlined />}
+                    src={!isGroup ? conv.avatar : undefined}
+                    style={isGroup ? { backgroundColor: '#1890ff' } : undefined}
+                    size={32}
+                  />
+                </Badge>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <Menu
         mode="inline"
         selectedKeys={[location.pathname]}

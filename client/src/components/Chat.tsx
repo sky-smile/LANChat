@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Input, Button, Empty, Avatar, Typography, Progress, message as antMessage } from 'antd';
-import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, PhoneOutlined, TeamOutlined } from '@ant-design/icons';
+import { Input, Button, Avatar, Typography, Progress, message as antMessage, Dropdown } from 'antd';
+import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, PhoneOutlined, TeamOutlined, CopyOutlined, SearchOutlined, ContactsOutlined, CommentOutlined } from '@ant-design/icons';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -260,6 +260,25 @@ function Chat() {
     return <div className="message-content">{msg.content}</div>;
   };
 
+  // 复制消息文本
+  const handleCopyMessage = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      antMessage.success('已复制');
+    }).catch(() => {
+      antMessage.error('复制失败');
+    });
+  };
+
+  // 消息右键菜单
+  const getMessageMenuItems = (msg: { content: string; messageType: string }) => [
+    {
+      key: 'copy',
+      icon: <CopyOutlined />,
+      label: '复制',
+      onClick: () => handleCopyMessage(msg.content),
+    },
+  ];
+
   // 判断是否是群聊
   const isGroup = currentConv?.type === 'group';
 
@@ -287,7 +306,24 @@ function Chat() {
   if (!currentConversation) {
     return (
       <div className="chat-container">
-        <Empty description="选择一个聊天开始对话" />
+        <div className="chat-empty-state">
+          <div className="chat-empty-icon">
+            <CommentOutlined />
+          </div>
+          <h3>欢迎使用 LANChat</h3>
+          <p>选择一个聊天开始对话，或搜索联系人发起新会话</p>
+          <div className="chat-empty-actions">
+            <Button icon={<SearchOutlined />} onClick={() => {
+              const searchInput = document.querySelector('.sidebar-search input') as HTMLInputElement;
+              searchInput?.focus();
+            }}>
+              搜索联系人
+            </Button>
+            <Button icon={<ContactsOutlined />} onClick={() => window.location.href = '/contacts'}>
+              查看通讯录
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -344,25 +380,27 @@ function Chat() {
                     {showSender && <Avatar size="small" icon={<UserOutlined />} />}
                   </div>
                 )}
-                <div className={`message-bubble ${isOwn ? 'bubble-own' : 'bubble-other'}`}>
-                  {isGroup && !isOwn && showSender && (
-                    <div className="message-sender-name">{msg.senderName || '未知用户'}</div>
-                  )}
-                  {renderMessageContent(msg)}
-                  <div className="message-meta">
-                    <span className="message-time">
-                      {new Date(msg.createdAt).toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    {isOwn && (
-                      <span className={`message-status ${msg.isRead ? 'status-read' : 'status-sent'}`}>
-                        {msg.isRead ? '已读' : '未读'}
-                      </span>
+                <Dropdown menu={{ items: getMessageMenuItems(msg) }} trigger={['contextMenu']}>
+                  <div className={`message-bubble ${isOwn ? 'bubble-own' : 'bubble-other'}`}>
+                    {isGroup && !isOwn && showSender && (
+                      <div className="message-sender-name">{msg.senderName || '未知用户'}</div>
                     )}
+                    {renderMessageContent(msg)}
+                    <div className="message-meta">
+                      <span className="message-time">
+                        {new Date(msg.createdAt).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {isOwn && (
+                        <span className={`message-status ${msg.isRead ? 'status-read' : 'status-sent'}`}>
+                          {msg.isRead ? '已读' : '未读'}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </Dropdown>
               </div>
             </div>
           );

@@ -6,8 +6,46 @@
 }
 
 /* 空状态 */
-.chat-container .ant-empty {
-  margin: auto;
+.chat-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 40px;
+  text-align: center;
+}
+
+.chat-empty-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  font-size: 36px;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+}
+
+.chat-empty-state h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: #333;
+}
+
+.chat-empty-state p {
+  color: #999;
+  margin: 0 0 24px;
+  font-size: 14px;
+}
+
+.chat-empty-actions {
+  display: flex;
+  gap: 12px;
 }
 
 /* 聊天头部 */
@@ -239,4 +277,42 @@
 .file-size {
   font-size: 11px;
   color: #999;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .message-row {
+    max-width: 85%;
+  }
+
+  .chat-header {
+    padding: 10px 12px;
+  }
+
+  .chat-messages {
+    padding: 12px;
+  }
+
+  .chat-input {
+    padding: 8px 12px;
+  }
+
+  .chat-empty-state {
+    padding: 24px;
+  }
+
+  .chat-empty-icon {
+    width: 64px;
+    height: 64px;
+    font-size: 28px;
+  }
+
+  .chat-empty-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .chat-empty-actions .ant-btn {
+    width: 100%;
+  }
 }

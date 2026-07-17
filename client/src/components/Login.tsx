@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Card, message } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Card, message, Typography } from 'antd';
+import { UserOutlined, LockOutlined, CommentOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/auth';
 import './Login.css';
+
+const { Text } = Typography;
 
 interface LoginFormData {
   username: string;
@@ -30,7 +32,14 @@ function Login() {
 
   return (
     <div className="login-container">
-      <Card className="login-card" title="LANChat 登录">
+      <div className="login-branding">
+        <div className="login-logo">
+          <CommentOutlined />
+        </div>
+        <h1 className="login-title">LANChat</h1>
+        <p className="login-subtitle">局域网安全即时通讯</p>
+      </div>
+      <Card className="login-card">
         <Form
           name="login"
           initialValues={{ remember: true }}
@@ -44,6 +53,7 @@ function Login() {
             <Input
               prefix={<UserOutlined />}
               placeholder="用户名"
+              autoComplete="username"
             />
           </Form.Item>
 
@@ -54,6 +64,7 @@ function Login() {
             <Input.Password
               prefix={<LockOutlined />}
               placeholder="密码"
+              autoComplete="current-password"
             />
           </Form.Item>
 
@@ -62,6 +73,12 @@ function Login() {
               登录
             </Button>
           </Form.Item>
+
+          <div className="login-footer">
+            <Text type="secondary" className="login-hint">
+              <InfoCircleOutlined /> 没有账号？请联系管理员开通
+            </Text>
+          </div>
         </Form>
       </Card>
     </div>
