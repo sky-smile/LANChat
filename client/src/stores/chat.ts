@@ -1,9 +1,11 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { useAuthStore } from './auth';
 
 export interface Message {
   id: string;
   senderId: string;
+  senderName?: string;
   receiverId: string;
   receiverType: 'user' | 'group';
   content: string;
@@ -23,6 +25,7 @@ export interface Conversation {
   unreadCount: number;
   type: 'user' | 'group';
   status?: string;
+  groupMemberCount?: number;
 }
 
 interface ChatState {
@@ -40,127 +43,150 @@ interface ChatState {
   markConversationRead: (userId: string) => void;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
-  conversations: [],
-  currentConversation: null,
-  messages: {},
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set) => ({
+      conversations: [],
+      currentConversation: null,
+      messages: {},
 
-  setCurrentConversation: (id) => {
-    set({ currentConversation: id });
-  },
-
-  addMessage: (_conversationId, message) => {
-    const currentUserId = useAuthStore.getState().user?.id;
-    set((state) => {
-      // 确定对话的对方 ID
-      const otherId = message.senderId === currentUserId ? message.receiverId : message.senderId;
-
-      // 更新或创建会话
-      const existingConv = state.conversations.find((c) => c.id === otherId);
-      let conversations: Conversation[];
-
-      if (existingConv) {
-        conversations = state.conversations.map((c) =>
-          c.id === otherId
-            ? {
-                ...c,
-                lastMessage: message,
-                unreadCount: state.currentConversation === otherId ? c.unreadCount : c.unreadCount + 1,
-              }
-            : c,
-        );
-      } else {
-        // 新会话
-        const newConv: Conversation = {
-          id: otherId,
-          name: otherId.slice(0, 8), // 简短显示 ID，后续改为真实用户名
-          lastMessage: message,
-          unreadCount: state.currentConversation === otherId ? 0 : 1,
-          type: message.receiverType,
-        };
-        conversations = [newConv, ...state.conversations];
-      }
-
-      return {
-        messages: {
-          ...state.messages,
-          [otherId]: [...(state.messages[otherId] || []), message],
-        },
-        conversations,
-      };
-    });
-  },
-
-  setMessages: (conversationId, messages) => {
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [conversationId]: messages,
+      setCurrentConversation: (id) => {
+        set({ currentConversation: id });
       },
-    }));
-  },
 
-  markAsRead: (conversationId) => {
-    set((state) => ({
-      conversations: state.conversations.map((conv) =>
-        conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv,
-      ),
-    }));
-  },
+      addMessage: (_conversationId, message) => {
+        const currentUserId = useAuthStore.getState().user?.id;
+        set((state) => {
+          // 群组消息：会话 ID 就是群组 ID（receiverId）
+          // 私聊消息：会话 ID 是对方 ID
+          const convId = message.receiverType === 'group'
+            ? message.receiverId
+            : (message.senderId === currentUserId ? message.receiverId : message.senderId);
 
-  updateMessageAck: (clientId, serverMsgId, createdAt) => {
-    set((state) => {
-      const newMessages = { ...state.messages };
-      for (const convId of Object.keys(newMessages)) {
-        newMessages[convId] = newMessages[convId].map((msg) =>
-          msg.clientId === clientId
-            ? { ...msg, id: serverMsgId, createdAt, clientId: undefined }
-            : msg,
-        );
-      }
-      return { messages: newMessages };
-    });
-  },
+          // 更新或创建会话
+          const existingConv = state.conversations.find((c) => c.id === convId);
+          let conversations: Conversation[];
 
-  updateContactStatus: (userId, status) => {
-    set((state) => ({
-      conversations: state.conversations.map((c) =>
-        c.id === userId ? { ...c, status } : c,
-      ),
-    }));
-  },
+          if (existingConv) {
+            conversations = state.conversations.map((c) =>
+              c.id === convId
+                ? {
+                    ...c,
+                    lastMessage: message,
+                    unreadCount: state.currentConversation === convId ? c.unreadCount : c.unreadCount + 1,
+                  }
+                : c,
+            );
+          } else {
+            // 新会话
+            const newConv: Conversation = {
+              id: convId,
+              name: message.receiverType === 'group'
+                ? (convId.slice(0, 8) + '...')
+                : (message.senderName || convId.slice(0, 8)),
+              lastMessage: message,
+              unreadCount: state.currentConversation === convId ? 0 : 1,
+              type: message.receiverType,
+            };
+            conversations = [newConv, ...state.conversations];
+          }
 
-  addConversation: (conversation) => {
-    set((state) => {
-      if (state.conversations.find((c) => c.id === conversation.id)) {
-        return state;
-      }
-      return { conversations: [conversation, ...state.conversations] };
-    });
-  },
+          return {
+            messages: {
+              ...state.messages,
+              [convId]: [...(state.messages[convId] || []), message],
+            },
+            conversations,
+          };
+        });
+      },
 
-  updateConversationName: (id, name) => {
-    set((state) => ({
-      conversations: state.conversations.map((c) =>
-        c.id === id ? { ...c, name } : c,
-      ),
-    }));
-  },
+      setMessages: (conversationId, messages) => {
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [conversationId]: messages,
+          },
+        }));
+      },
 
-  markConversationRead: (userId) => {
-    set((state) => {
-      const convMessages = state.messages[userId];
-      if (!convMessages) return state;
-      // 将我发给该用户的消息标记为已读
-      const updatedMessages = convMessages.map((msg) =>
-        msg.receiverId === userId && !msg.isRead ? { ...msg, isRead: true } : msg,
-      );
-      return {
-        messages: {
-          ...state.messages,
-          [userId]: updatedMessages,
-        },
-      };
-    });
-  },
-}));
+      markAsRead: (conversationId) => {
+        set((state) => ({
+          conversations: state.conversations.map((conv) =>
+            conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv,
+          ),
+        }));
+      },
+
+      updateMessageAck: (clientId, serverMsgId, createdAt) => {
+        set((state) => {
+          const newMessages = { ...state.messages };
+          for (const convId of Object.keys(newMessages)) {
+            newMessages[convId] = newMessages[convId].map((msg) =>
+              msg.clientId === clientId
+                ? { ...msg, id: serverMsgId, createdAt, clientId: undefined }
+                : msg,
+            );
+          }
+          return { messages: newMessages };
+        });
+      },
+
+      updateContactStatus: (userId, status) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === userId ? { ...c, status } : c,
+          ),
+        }));
+      },
+
+      addConversation: (conversation) => {
+        set((state) => {
+          if (state.conversations.find((c) => c.id === conversation.id)) {
+            // 更新已有会话的状态
+            return {
+              conversations: state.conversations.map((c) =>
+                c.id === conversation.id
+                  ? { ...c, ...conversation, lastMessage: c.lastMessage, unreadCount: c.unreadCount }
+                  : c,
+              ),
+            };
+          }
+          return { conversations: [conversation, ...state.conversations] };
+        });
+      },
+
+      updateConversationName: (id, name) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, name } : c,
+          ),
+        }));
+      },
+
+      markConversationRead: (userId) => {
+        set((state) => {
+          const convMessages = state.messages[userId];
+          if (!convMessages) return state;
+          // 将我发给该用户的消息标记为已读
+          const updatedMessages = convMessages.map((msg) =>
+            msg.receiverId === userId && !msg.isRead ? { ...msg, isRead: true } : msg,
+          );
+          return {
+            messages: {
+              ...state.messages,
+              [userId]: updatedMessages,
+            },
+          };
+        });
+      },
+    }),
+    {
+      name: 'chat-storage',
+      // 只持久化会话列表，不持久化消息（消息从服务器加载）
+      partialize: (state) => ({
+        conversations: state.conversations,
+      }),
+    },
+  ),
+);

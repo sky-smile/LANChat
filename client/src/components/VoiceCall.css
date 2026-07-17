@@ -118,3 +118,13 @@
   background: #faad14 !important;
   box-shadow: 0 4px 15px rgba(250, 173, 20, 0.3) !important;
 }
+
+/* 群组通话参与者列表 */
+.voice-call-participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  max-width: 280px;
+  margin: 4px 0;
+}

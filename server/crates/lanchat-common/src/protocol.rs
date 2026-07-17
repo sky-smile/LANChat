@@ -94,6 +94,32 @@ pub enum WsMessage {
     /// 通话状态通知（服务端 → 双方）
     #[serde(rename = "call_status")]
     CallStatus(CallStatusPayload),
+
+    // ---- 多人通话信令 ----
+
+    /// 创建群组通话（发起方 → 服务端）
+    #[serde(rename = "group_call_create")]
+    GroupCallCreate(GroupCallCreatePayload),
+
+    /// 加入群组通话（参与者 → 服务端）
+    #[serde(rename = "group_call_join")]
+    GroupCallJoin(GroupCallJoinPayload),
+
+    /// 离开群组通话（参与者 → 服务端）
+    #[serde(rename = "group_call_leave")]
+    GroupCallLeave(GroupCallLeavePayload),
+
+    /// 群组通话参与者更新（服务端 → 所有参与者）
+    #[serde(rename = "group_call_participants")]
+    GroupCallParticipants(GroupCallParticipantsPayload),
+
+    /// 群组通话邀请（服务端 → 被邀请者）
+    #[serde(rename = "group_call_invite")]
+    GroupCallInvite(GroupCallInvitePayload),
+
+    /// 群组通话结束（服务端 → 所有参与者）
+    #[serde(rename = "group_call_ended")]
+    GroupCallEnded(GroupCallEndedPayload),
 }
 
 /// 认证载荷
@@ -281,6 +307,85 @@ pub struct CallStatusPayload {
     /// 可选的状态消息
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+}
+
+// ---- 多人通话载荷 ----
+
+/// 创建群组通话载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupCallCreatePayload {
+    /// 群组通话唯一标识
+    pub call_id: String,
+    /// 群组 ID
+    pub group_id: String,
+    /// 发起方用户 ID
+    pub creator_id: String,
+    /// 发起方显示名称
+    pub creator_name: String,
+}
+
+/// 加入群组通话载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupCallJoinPayload {
+    /// 群组通话唯一标识
+    pub call_id: String,
+    /// 加入者用户 ID
+    pub user_id: String,
+    /// 加入者显示名称
+    pub user_name: String,
+}
+
+/// 离开群组通话载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupCallLeavePayload {
+    /// 群组通话唯一标识
+    pub call_id: String,
+    /// 离开者用户 ID
+    pub user_id: String,
+}
+
+/// 群组通话参与者更新载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupCallParticipantsPayload {
+    /// 群组通话唯一标识
+    pub call_id: String,
+    /// 当前参与者列表
+    pub participants: Vec<GroupCallParticipant>,
+}
+
+/// 群组通话参与者信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupCallParticipant {
+    /// 用户 ID
+    pub user_id: String,
+    /// 显示名称
+    pub user_name: String,
+    /// 是否静音
+    pub is_muted: bool,
+}
+
+/// 群组通话邀请载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupCallInvitePayload {
+    /// 群组通话唯一标识
+    pub call_id: String,
+    /// 群组 ID
+    pub group_id: String,
+    /// 群组名称
+    pub group_name: String,
+    /// 发起方用户 ID
+    pub caller_id: String,
+    /// 发起方显示名称
+    pub caller_name: String,
+}
+
+/// 群组通话结束载荷
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupCallEndedPayload {
+    /// 群组通话唯一标识
+    pub call_id: String,
+    /// 结束原因
+    pub reason: String,
 }
 
 impl WsMessage {

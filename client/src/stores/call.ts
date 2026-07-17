@@ -6,14 +6,26 @@ export type CallStatus = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connec
 /** 通话角色 */
 export type CallRole = 'caller' | 'callee';
 
+/** 通话类型 */
+export type CallType = 'single' | 'group';
+
+/** 群组通话参与者 */
+export interface GroupCallParticipant {
+  user_id: string;
+  user_name: string;
+  is_muted: boolean;
+}
+
 interface CallState {
   /** 当前通话状态 */
   callStatus: CallStatus;
   /** 通话 ID */
   callId: string | null;
-  /** 对方用户 ID */
+  /** 通话类型 */
+  callType: CallType;
+  /** 对方用户 ID（单人通话） */
   peerId: string | null;
-  /** 对方用户名 */
+  /** 对方用户名（单人通话） */
   peerName: string | null;
   /** 通话角色 */
   role: CallRole | null;
@@ -21,6 +33,14 @@ interface CallState {
   isMuted: boolean;
   /** 通话开始时间（用于计时） */
   connectedAt: number | null;
+
+  // ---- 群组通话 ----
+  /** 群组 ID */
+  groupId: string | null;
+  /** 群组名称 */
+  groupName: string | null;
+  /** 参与者列表 */
+  participants: GroupCallParticipant[];
 
   // ---- Actions ----
   /** 发起通话（呼叫方） */
@@ -35,21 +55,38 @@ interface CallState {
   toggleMute: () => void;
   /** 设置通话状态 */
   setStatus: (status: CallStatus) => void;
+
+  // ---- 群组通话 Actions ----
+  /** 创建群组通话 */
+  createGroupCall: (callId: string, groupId: string, groupName: string) => void;
+  /** 加入群组通话 */
+  joinGroupCall: (callId: string, groupId: string, groupName: string) => void;
+  /** 更新参与者列表 */
+  updateParticipants: (participants: GroupCallParticipant[]) => void;
+  /** 离开群组通话 */
+  leaveGroupCall: () => void;
 }
 
 export const useCallStore = create<CallState>((set) => ({
   callStatus: 'idle',
   callId: null,
+  callType: 'single',
   peerId: null,
   peerName: null,
   role: null,
   isMuted: false,
   connectedAt: null,
 
+  // 群组通话
+  groupId: null,
+  groupName: null,
+  participants: [],
+
   startCall: (callId, peerId, peerName) => {
     set({
       callStatus: 'calling',
       callId,
+      callType: 'single',
       peerId,
       peerName,
       role: 'caller',
@@ -62,6 +99,7 @@ export const useCallStore = create<CallState>((set) => ({
     set({
       callStatus: 'ringing',
       callId,
+      callType: 'single',
       peerId: callerId,
       peerName: callerName,
       role: 'callee',
@@ -86,11 +124,15 @@ export const useCallStore = create<CallState>((set) => ({
       set({
         callStatus: 'idle',
         callId: null,
+        callType: 'single',
         peerId: null,
         peerName: null,
         role: null,
         isMuted: false,
         connectedAt: null,
+        groupId: null,
+        groupName: null,
+        participants: [],
       });
     }, 1500);
   },
@@ -101,5 +143,59 @@ export const useCallStore = create<CallState>((set) => ({
 
   setStatus: (status) => {
     set({ callStatus: status });
+  },
+
+  // 群组通话
+  createGroupCall: (callId, groupId, groupName) => {
+    set({
+      callStatus: 'connected',
+      callId,
+      callType: 'group',
+      groupId,
+      groupName,
+      role: 'caller',
+      isMuted: false,
+      connectedAt: Date.now(),
+      participants: [],
+    });
+  },
+
+  joinGroupCall: (callId, groupId, groupName) => {
+    set({
+      callStatus: 'connecting',
+      callId,
+      callType: 'group',
+      groupId,
+      groupName,
+      role: 'callee',
+      isMuted: false,
+      connectedAt: null,
+      participants: [],
+    });
+  },
+
+  updateParticipants: (participants) => {
+    set({ participants });
+  },
+
+  leaveGroupCall: () => {
+    set({
+      callStatus: 'ended',
+    });
+    setTimeout(() => {
+      set({
+        callStatus: 'idle',
+        callId: null,
+        callType: 'single',
+        peerId: null,
+        peerName: null,
+        role: null,
+        isMuted: false,
+        connectedAt: null,
+        groupId: null,
+        groupName: null,
+        participants: [],
+      });
+    }, 1500);
   },
 }));

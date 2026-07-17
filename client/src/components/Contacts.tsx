@@ -40,7 +40,18 @@ function Contacts() {
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [form] = Form.useForm();
   const navigate = useNavigate();
-  const { addConversation, setCurrentConversation } = useChatStore();
+  const { addConversation, setCurrentConversation, conversations } = useChatStore();
+
+  // 已有会话中的联系人（去重）
+  const recentContacts = conversations
+    .filter((c) => c.type === 'user')
+    .map((c) => ({
+      id: c.id,
+      username: c.name,
+      displayName: c.name,
+      avatarUrl: c.avatar,
+      status: c.status || 'offline',
+    } as ContactItem));
 
   // 加载群组列表
   const loadGroups = useCallback(async () => {
@@ -117,6 +128,7 @@ function Contacts() {
       avatar: group.avatarUrl,
       unreadCount: 0,
       type: 'group',
+      groupMemberCount: group.memberCount,
     });
     setCurrentConversation(group.id);
     navigate('/');
@@ -160,25 +172,50 @@ function Contacts() {
           </div>
           {loading ? (
             <div className="contacts-loading"><Spin /></div>
-          ) : contacts.length === 0 ? (
-            <Empty description={searchQuery ? '未找到用户' : '输入用户名搜索'} />
-          ) : (
-            <List
-              dataSource={contacts}
-              renderItem={(contact) => (
-                <div className="contact-item" onClick={() => startChat(contact)}>
-                  <Avatar icon={<UserOutlined />} src={contact.avatarUrl} />
-                  <div className="contact-info">
-                    <div className="contact-name">{contact.displayName || contact.username}</div>
-                    <div className="contact-meta">
-                      <span className="contact-username">@{contact.username}</span>
-                      {contact.department && <span className="contact-dept">{contact.department}</span>}
+          ) : searchQuery.trim() ? (
+            contacts.length === 0 ? (
+              <Empty description="未找到用户" />
+            ) : (
+              <List
+                dataSource={contacts}
+                renderItem={(contact) => (
+                  <div className="contact-item" onClick={() => startChat(contact)}>
+                    <Avatar icon={<UserOutlined />} src={contact.avatarUrl} />
+                    <div className="contact-info">
+                      <div className="contact-name">{contact.displayName || contact.username}</div>
+                      <div className="contact-meta">
+                        <span className="contact-username">@{contact.username}</span>
+                        {contact.department && <span className="contact-dept">{contact.department}</span>}
+                      </div>
                     </div>
+                    <div className={`status-dot ${contact.status}`} />
                   </div>
-                  <div className={`status-dot ${contact.status}`} />
-                </div>
-              )}
-            />
+                )}
+              />
+            )
+          ) : (
+            recentContacts.length === 0 ? (
+              <Empty description="暂无联系人，请搜索添加" />
+            ) : (
+              <>
+                <div className="contacts-section-title">最近联系</div>
+                <List
+                  dataSource={recentContacts}
+                  renderItem={(contact) => (
+                    <div className="contact-item" onClick={() => startChat(contact)}>
+                      <Avatar icon={<UserOutlined />} src={contact.avatarUrl} />
+                      <div className="contact-info">
+                        <div className="contact-name">{contact.displayName || contact.username}</div>
+                        <div className="contact-meta">
+                          <span className="contact-username">@{contact.username}</span>
+                        </div>
+                      </div>
+                      <div className={`status-dot ${contact.status}`} />
+                    </div>
+                  )}
+                />
+              </>
+            )
           )}
         </div>
       ),
@@ -207,11 +244,14 @@ function Contacts() {
               dataSource={groups}
               renderItem={(group) => (
                 <div className="contact-item" onClick={() => enterGroup(group)}>
-                  <Avatar icon={<TeamOutlined />} src={group.avatarUrl} />
+                  <Avatar icon={<TeamOutlined />} src={group.avatarUrl} style={{ backgroundColor: '#1890ff' }} />
                   <div className="contact-info">
                     <div className="contact-name">{group.name}</div>
                     <div className="contact-meta">
                       {group.description && <span>{group.description}</span>}
+                      {group.memberCount !== undefined && (
+                        <span className="contact-member-count">{group.memberCount} 位成员</span>
+                      )}
                     </div>
                   </div>
                 </div>

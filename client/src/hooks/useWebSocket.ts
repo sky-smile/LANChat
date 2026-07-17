@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { dispatchCallSignaling } from './callSignalingBus';
+import { playMessageSound } from '@/utils/notification';
 
 // WebSocket 消息类型
 interface WsMessage {
@@ -78,14 +79,16 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
         console.log('[WS] 认证成功', msg.payload);
         reconnectAttemptsRef.current = 0;
         updateUserStatus('online');
-        // WS 连接就绪后，为当前会话发送已读回执（解决时序问题）
+        // WS 连接就绪后，为当前会话发送已读回执
         {
           const currentConv = useChatStore.getState().currentConversation;
           if (currentConv) {
-            console.log('[WS] 连接就绪，发送 mark_read', currentConv);
+            const conv = useChatStore.getState().conversations.find((c) => c.id === currentConv);
+            const rType = conv?.type || 'user';
+            console.log('[WS] 连接就绪，发送 mark_read', currentConv, rType);
             wsRef.current?.send(JSON.stringify({
               type: 'mark_read',
-              payload: { sender_id: currentConv, receiver_type: 'user' },
+              payload: { sender_id: currentConv, receiver_type: rType },
             }));
           }
         }
@@ -98,12 +101,16 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
       case 'new_message': {
         const payload = msg.payload as NewMessagePayload;
         const currentUserId = useAuthStore.getState().user?.id;
-        const otherId = payload.sender_id === currentUserId ? payload.receiver_id : payload.sender_id;
-        const isNewConversation = !useChatStore.getState().conversations.find((c) => c.id === otherId);
+        // 群组消息：会话 ID 是 receiver_id（群组 ID）
+        // 私聊消息：会话 ID 是对方 ID
+        const convId = payload.receiver_type === 'group'
+          ? payload.receiver_id
+          : (payload.sender_id === currentUserId ? payload.receiver_id : payload.sender_id);
 
-        addMessage(otherId, {
+        addMessage(convId, {
           id: payload.id,
           senderId: payload.sender_id,
+          senderName: payload.sender_name,
           receiverId: payload.receiver_id,
           receiverType: payload.receiver_type as 'user' | 'group',
           content: payload.content,
@@ -113,9 +120,24 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
           createdAt: payload.created_at,
         });
 
-        if (isNewConversation && payload.sender_id !== currentUserId && payload.sender_name) {
-          updateConversationName(otherId, payload.sender_name);
+        // 私聊新会话时更新对方名称
+        if (payload.receiver_type !== 'group' && payload.sender_id !== currentUserId && payload.sender_name) {
+          const isNewConversation = !useChatStore.getState().conversations.find((c) => c.id === convId);
+          if (isNewConversation) {
+            updateConversationName(convId, payload.sender_name);
+          }
         }
+
+        // 播放提示音（非自己消息且非当前活跃会话时）
+        if (payload.sender_id !== currentUserId) {
+          const currentConv = useChatStore.getState().currentConversation;
+          const isVisible = document.visibilityState === 'visible';
+          const isCurrentConv = currentConv === convId && isVisible;
+          if (!isCurrentConv) {
+            playMessageSound();
+          }
+        }
+
         break;
       }
 
@@ -157,9 +179,27 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
       case 'call_offer':
       case 'call_answer':
       case 'call_ice':
+      // 群组通话信令
+      case 'group_call_participants':
+      case 'group_call_ended':
         console.log('[WS] 收到通话信令:', msg.type, msg.payload);
         dispatchCallSignaling(msg);
         break;
+
+      // 群组通话邀请通知
+      case 'group_call_invite': {
+        const invite = msg.payload as {
+          call_id: string;
+          group_id: string;
+          group_name: string;
+          caller_id: string;
+          caller_name: string;
+        };
+        console.log('[WS] 收到群组通话邀请:', invite);
+        // 将邀请也转发给信令总线，由 useWebRTC 或 UI 组件处理
+        dispatchCallSignaling(msg);
+        break;
+      }
 
       default:
         console.debug('[WS] 未知消息类型', msg.type);

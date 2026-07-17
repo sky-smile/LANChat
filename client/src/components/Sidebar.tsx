@@ -7,11 +7,13 @@ import {
   LogoutOutlined,
   UserOutlined,
   SearchOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import api from '@/services/api';
+import { formatTime } from '@/utils/format';
 import type { Contact } from '@/stores/contacts';
 import './Sidebar.css';
 
@@ -193,32 +195,44 @@ function Sidebar() {
           ) : (
             <List
               dataSource={conversations}
-              renderItem={(conv) => (
-                <div
-                  className={`conversation-item ${conv.id === currentConversation ? 'active' : ''}`}
-                  onClick={() => handleConversationClick(conv.id)}
-                >
-                  <Badge count={conv.unreadCount} size="small">
-                    <Avatar icon={<UserOutlined />} />
-                  </Badge>
-                  <div className="conversation-info">
-                    <div className="conversation-name">{conv.name}</div>
+              renderItem={(conv) => {
+                const isGroup = conv.type === 'group';
+                return (
+                  <div
+                    className={`conversation-item ${conv.id === currentConversation ? 'active' : ''}`}
+                    onClick={() => handleConversationClick(conv.id)}
+                  >
+                    <Badge count={conv.unreadCount} size="small">
+                      <div className="conversation-avatar-wrap">
+                        <Avatar
+                          icon={isGroup ? <TeamOutlined /> : <UserOutlined />}
+                          src={!isGroup ? conv.avatar : undefined}
+                          style={isGroup ? { backgroundColor: '#1890ff' } : undefined}
+                          size={40}
+                        />
+                        {!isGroup && conv.status && (
+                          <div className={`conversation-status-dot ${conv.status === 'online' ? 'online' : 'offline'}`} />
+                        )}
+                      </div>
+                    </Badge>
+                    <div className="conversation-info">
+                      <div className="conversation-name">{conv.name}</div>
+                      {conv.lastMessage && (
+                        <div className="conversation-preview">
+                          {isGroup && conv.lastMessage.senderName
+                            ? `${conv.lastMessage.senderName}: ${conv.lastMessage.content?.slice(0, 20)}`
+                            : conv.lastMessage.content?.slice(0, 30)}
+                        </div>
+                      )}
+                    </div>
                     {conv.lastMessage && (
-                      <div className="conversation-preview">
-                        {conv.lastMessage.content?.slice(0, 30)}
+                      <div className="conversation-time">
+                        {formatTime(conv.lastMessage.createdAt)}
                       </div>
                     )}
                   </div>
-                  {conv.lastMessage && (
-                    <div className="conversation-time">
-                      {new Date(conv.lastMessage.createdAt).toLocaleTimeString('zh-CN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                );
+              }}
             />
           )}
         </div>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Button, Avatar } from 'antd';
+import { Button, Avatar, Badge } from 'antd';
 import {
   PhoneOutlined,
   CloseOutlined,
   AudioOutlined,
   AudioMutedOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { useCallStore } from '@/stores/call';
 import './VoiceCall.css';
@@ -17,7 +18,10 @@ interface VoiceCallProps {
 }
 
 function VoiceCall({ onAccept, onReject, onHangup, onToggleMute }: VoiceCallProps) {
-  const { callStatus, peerName, role, isMuted, connectedAt } = useCallStore();
+  const {
+    callStatus, peerName, role, isMuted, connectedAt,
+    callType, groupName, participants,
+  } = useCallStore();
   const [duration, setDuration] = useState('00:00');
 
   // 通话计时
@@ -37,26 +41,50 @@ function VoiceCall({ onAccept, onReject, onHangup, onToggleMute }: VoiceCallProp
   // 不在通话中则不渲染
   if (callStatus === 'idle') return null;
 
+  const isGroup = callType === 'group';
   const isRinging = callStatus === 'ringing' && role === 'callee';
   const isCalling = callStatus === 'calling';
   const isConnected = callStatus === 'connected';
   const isEnded = callStatus === 'ended';
+
+  // 显示名称
+  const displayName = isGroup ? (groupName || '群组通话') : (peerName || '未知用户');
 
   return (
     <div className="voice-call-overlay">
       <div className="voice-call-card">
         {/* 头像 */}
         <div className="voice-call-avatar">
-          <Avatar size={80} icon={<PhoneOutlined />} />
+          {isGroup ? (
+            <Badge count={participants.length} offset={[-5, 65]}>
+              <Avatar size={80} icon={<TeamOutlined />} style={{ backgroundColor: '#1890ff' }} />
+            </Badge>
+          ) : (
+            <Avatar size={80} icon={<PhoneOutlined />} />
+          )}
         </div>
 
-        {/* 对方名称 */}
-        <div className="voice-call-name">{peerName || '未知用户'}</div>
+        {/* 名称 */}
+        <div className="voice-call-name">{displayName}</div>
+
+        {/* 群组通话参与者列表 */}
+        {isGroup && participants.length > 0 && (
+          <div className="voice-call-participants">
+            {participants.map((p) => (
+              <Badge key={p.user_id} dot status={p.is_muted ? 'default' : 'success'} offset={[-2, 2]}>
+                <Avatar size={32} style={{ backgroundColor: '#87d068', margin: '2px' }}>
+                  {p.user_name?.[0] || '?'}
+                </Avatar>
+              </Badge>
+            ))}
+          </div>
+        )}
 
         {/* 状态文字 */}
         <div className="voice-call-status">
           {isCalling && '正在呼叫...'}
-          {isRinging && '来电中...'}
+          {isRinging && !isGroup && '来电中...'}
+          {isRinging && isGroup && `${peerName || '好友'} 邀请你加入群组通话`}
           {callStatus === 'connecting' && '连接中...'}
           {isConnected && duration}
           {isEnded && '通话已结束'}

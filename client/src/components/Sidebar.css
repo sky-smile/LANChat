@@ -126,6 +126,30 @@
   border-left-color: #1890ff;
 }
 
+/* 会话头像容器 */
+.conversation-avatar-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.conversation-status-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #001529;
+}
+
+.conversation-status-dot.online {
+  background: #52c41a;
+}
+
+.conversation-status-dot.offline {
+  background: #666;
+}
+
 .conversation-info {
   flex: 1;
   min-width: 0;

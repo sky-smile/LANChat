@@ -17,6 +17,17 @@ pub struct CallInfo {
     pub callee_id: String,
 }
 
+/// 群组通话信息
+#[derive(Clone, Debug)]
+pub struct GroupCallInfo {
+    /// 群组 ID
+    pub group_id: String,
+    /// 发起方用户 ID
+    pub creator_id: String,
+    /// 参与者列表：user_id -> user_name
+    pub participants: HashMap<String, String>,
+}
+
 /// 应用状态
 #[derive(Clone)]
 pub struct AppState {
@@ -26,6 +37,8 @@ pub struct AppState {
     pub connections: routes::ws::Connections,
     /// 活跃通话映射：call_id -> CallInfo
     pub active_calls: Arc<RwLock<HashMap<String, CallInfo>>>,
+    /// 活跃群组通话映射：call_id -> GroupCallInfo
+    pub active_group_calls: Arc<RwLock<HashMap<String, GroupCallInfo>>>,
 }
 
 #[tokio::main]
@@ -62,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
         jwt_secret,
         connections: routes::ws::create_connections(),
         active_calls: Arc::new(RwLock::new(HashMap::new())),
+        active_group_calls: Arc::new(RwLock::new(HashMap::new())),
     };
 
     // CORS 配置

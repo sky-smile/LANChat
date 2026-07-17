@@ -50,6 +50,13 @@
   padding: 40px 0;
 }
 
+.contacts-section-title {
+  padding: 8px 16px 4px;
+  font-size: 12px;
+  color: #999;
+  font-weight: 500;
+}
+
 .contact-item {
   display: flex;
   align-items: center;
@@ -92,6 +99,11 @@
 
 .contact-dept {
   color: #999;
+}
+
+.contact-member-count {
+  color: #1890ff;
+  font-size: 11px;
 }
 
 .status-dot {

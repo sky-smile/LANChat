@@ -14,7 +14,7 @@ use fred::interfaces::KeysInterface;
 use lanchat_common::auth::verify_token;
 use lanchat_common::protocol::*;
 
-use crate::AppState;
+use crate::{AppState, GroupCallInfo};
 
 /// 在线用户连接映射：user_id -> 消息发送器
 pub type Connections = Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>;
@@ -187,6 +187,16 @@ async fn handle_text_message(state: &AppState, user_id: &str, text: &str) {
         WsMessage::CallIce(payload) => {
             let receiver_id = payload.receiver_id.clone();
             handle_call_ice_forward(state, &receiver_id, payload).await;
+        }
+        // ---- 多人通话信令 ----
+        WsMessage::GroupCallCreate(payload) => {
+            handle_group_call_create(state, user_id, payload).await;
+        }
+        WsMessage::GroupCallJoin(payload) => {
+            handle_group_call_join(state, user_id, payload).await;
+        }
+        WsMessage::GroupCallLeave(payload) => {
+            handle_group_call_leave(state, user_id, payload).await;
         }
         WsMessage::Ping => {
             let conns = state.connections.read().await;
@@ -522,6 +532,173 @@ async fn broadcast_presence(state: &AppState, user_id: &str, status: &str, exclu
     for (uid, tx) in conns.iter() {
         if Some(uid.as_str()) != exclude {
             let _ = tx.send(Message::Text(text.clone().into()));
+        }
+    }
+}
+
+// ---- 多人通话处理函数 ----
+
+/// 处理创建群组通话
+async fn handle_group_call_create(state: &AppState, user_id: &str, payload: GroupCallCreatePayload) {
+    tracing::info!(
+        "创建群组通话: call_id={}, group_id={}, creator={}",
+        payload.call_id, payload.group_id, user_id
+    );
+
+    // 获取创建者名称
+    let creator_name = if let Ok(uid) = Uuid::parse_str(user_id) {
+        lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|u| u.display_name)
+            .unwrap_or_else(|| user_id.to_string())
+    } else {
+        user_id.to_string()
+    };
+
+    // 创建群组通话记录
+    let mut participants = HashMap::new();
+    participants.insert(user_id.to_string(), creator_name.clone());
+
+    let group_call_info = GroupCallInfo {
+        group_id: payload.group_id.clone(),
+        creator_id: user_id.to_string(),
+        participants,
+    };
+
+    state.active_group_calls.write().await.insert(payload.call_id.clone(), group_call_info);
+
+    // 通知创建者通话已创建
+    let conns = state.connections.read().await;
+    if let Some(tx) = conns.get(user_id) {
+        let participants_payload = GroupCallParticipantsPayload {
+            call_id: payload.call_id.clone(),
+            participants: vec![GroupCallParticipant {
+                user_id: user_id.to_string(),
+                user_name: creator_name.clone(),
+                is_muted: false,
+            }],
+        };
+        let _ = tx.send(Message::Text(WsMessage::GroupCallParticipants(participants_payload).to_json().into()));
+    }
+
+    // 通知群组其他成员有通话可以加入
+    if let Ok(group_uuid) = Uuid::parse_str(&payload.group_id) {
+        match lanchat_core::services::group::get_member_ids(&state.db, &group_uuid).await {
+            Ok(member_ids) => {
+                let conns = state.connections.read().await;
+                for member_id in &member_ids {
+                    let member_str = member_id.to_string();
+                    if member_str == user_id {
+                        continue; // 跳过创建者
+                    }
+                    if let Some(tx) = conns.get(&member_str) {
+                        let invite = GroupCallInvitePayload {
+                            call_id: payload.call_id.clone(),
+                            group_id: payload.group_id.clone(),
+                            group_name: format!("群组通话"), // 简化处理
+                            caller_id: user_id.to_string(),
+                            caller_name: creator_name.clone(),
+                        };
+                        let _ = tx.send(Message::Text(WsMessage::GroupCallInvite(invite).to_json().into()));
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("获取群组成员失败: {}", e);
+            }
+        }
+    }
+
+    // TODO: 通知群组其他成员有通话可以加入
+}
+
+/// 处理加入群组通话
+async fn handle_group_call_join(state: &AppState, user_id: &str, payload: GroupCallJoinPayload) {
+    tracing::info!(
+        "加入群组通话: call_id={}, user={}",
+        payload.call_id, user_id
+    );
+
+    let mut group_calls = state.active_group_calls.write().await;
+    if let Some(call_info) = group_calls.get_mut(&payload.call_id) {
+        // 添加参与者
+        call_info.participants.insert(user_id.to_string(), payload.user_name.clone());
+
+        // 构建参与者列表
+        let participants: Vec<GroupCallParticipant> = call_info
+            .participants
+            .iter()
+            .map(|(uid, name)| GroupCallParticipant {
+                user_id: uid.clone(),
+                user_name: name.clone(),
+                is_muted: false,
+            })
+            .collect();
+
+        // 通知所有参与者更新列表
+        let conns = state.connections.read().await;
+        for (pid, _) in &call_info.participants {
+            if let Some(tx) = conns.get(pid) {
+                let participants_payload = GroupCallParticipantsPayload {
+                    call_id: payload.call_id.clone(),
+                    participants: participants.clone(),
+                };
+                let _ = tx.send(Message::Text(WsMessage::GroupCallParticipants(participants_payload).to_json().into()));
+            }
+        }
+    } else {
+        // 通话不存在
+        let conns = state.connections.read().await;
+        if let Some(tx) = conns.get(user_id) {
+            let error = WsMessage::Error(ErrorPayload {
+                code: 404,
+                message: "群组通话不存在".to_string(),
+            });
+            let _ = tx.send(Message::Text(error.to_json().into()));
+        }
+    }
+}
+
+/// 处理离开群组通话
+async fn handle_group_call_leave(state: &AppState, user_id: &str, payload: GroupCallLeavePayload) {
+    tracing::info!(
+        "离开群组通话: call_id={}, user={}",
+        payload.call_id, user_id
+    );
+
+    let mut group_calls = state.active_group_calls.write().await;
+    if let Some(call_info) = group_calls.get_mut(&payload.call_id) {
+        // 移除参与者
+        call_info.participants.remove(user_id);
+
+        if call_info.participants.is_empty() {
+            // 所有人都离开了，销毁通话
+            group_calls.remove(&payload.call_id);
+            tracing::info!("群组通话已结束: call_id={}", payload.call_id);
+        } else {
+            // 通知剩余参与者更新列表
+            let participants: Vec<GroupCallParticipant> = call_info
+                .participants
+                .iter()
+                .map(|(uid, name)| GroupCallParticipant {
+                    user_id: uid.clone(),
+                    user_name: name.clone(),
+                    is_muted: false,
+                })
+                .collect();
+
+            let conns = state.connections.read().await;
+            for (pid, _) in &call_info.participants {
+                if let Some(tx) = conns.get(pid) {
+                    let participants_payload = GroupCallParticipantsPayload {
+                        call_id: payload.call_id.clone(),
+                        participants: participants.clone(),
+                    };
+                    let _ = tx.send(Message::Text(WsMessage::GroupCallParticipants(participants_payload).to_json().into()));
+                }
+            }
         }
     }
 }

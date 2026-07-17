@@ -1,7 +1,8 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { useCallStore } from '@/stores/call';
+import { useCallStore, type GroupCallParticipant } from '@/stores/call';
 import { useAuthStore } from '@/stores/auth';
 import { setCallSignalingHandler } from './callSignalingBus';
+import { playRingSound, stopRingSound } from '@/utils/notification';
 
 /** WebRTC 配置 */
 const RTC_CONFIG: RTCConfiguration = {
@@ -12,27 +13,47 @@ const RTC_CONFIG: RTCConfiguration = {
 
 /** 模块级引用：供外部组件调用发起通话 */
 let _initiateCallRef: ((peerId: string, peerName: string) => Promise<void>) | null = null;
+/** 模块级引用：供外部组件调用创建群组通话 */
+let _createGroupCallRef: ((groupId: string, groupName: string) => Promise<void>) | null = null;
+/** 模块级引用：供外部组件调用加入群组通话 */
+let _joinGroupCallRef: ((callId: string, groupId: string, groupName: string) => Promise<void>) | null = null;
 
 /** 获取发起通话函数（供 Chat 等组件调用） */
 export function getInitiateCall() {
   return _initiateCallRef;
 }
 
+/** 获取创建群组通话函数 */
+export function getCreateGroupCall() {
+  return _createGroupCallRef;
+}
+
+/** 获取加入群组通话函数 */
+export function getJoinGroupCall() {
+  return _joinGroupCallRef;
+}
+
 /**
  * WebRTC 语音通话 Hook
  *
- * 通过现有 WebSocket 通道交换信令（Offer/Answer/ICE），
- * 建立点对点音频连接。
+ * 支持单人通话和多人通话（Mesh 架构）
+ * 通过现有 WebSocket 通道交换信令（Offer/Answer/ICE）
  */
 export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
+  // 单人通话 PeerConnection
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  // 多人通话 PeerConnection 映射：user_id -> RTCPeerConnection
+  const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  // 远端音频元素映射：user_id -> HTMLAudioElement
+  const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   const {
     setConnected,
     endCall,
     setStatus,
+    updateParticipants,
+    leaveGroupCall,
   } = useCallStore();
 
   /** 向 WebSocket 发送消息 */
@@ -42,7 +63,71 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     }
   }, [wsRef]);
 
-  /** 创建 RTCPeerConnection 并绑定事件 */
+  /** 获取本地音频流 */
+  const startLocalAudio = useCallback(async () => {
+    if (localStreamRef.current) return localStreamRef.current;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      return stream;
+    } catch (err) {
+      console.error('[WebRTC] 获取麦克风失败:', err);
+      throw err;
+    }
+  }, []);
+
+  /** 播放远端音频 */
+  const playRemoteAudio = useCallback((peerId: string, stream: MediaStream) => {
+    let audio = remoteAudiosRef.current.get(peerId);
+    if (!audio) {
+      audio = new Audio();
+      audio.autoplay = true;
+      document.body.appendChild(audio);
+      remoteAudiosRef.current.set(peerId, audio);
+    }
+    audio.srcObject = stream;
+  }, []);
+
+  /** 清理所有远端音频元素 */
+  const cleanupAllRemoteAudio = useCallback(() => {
+    remoteAudiosRef.current.forEach((audio) => {
+      audio.pause();
+      audio.srcObject = null;
+      audio.remove();
+    });
+    remoteAudiosRef.current.clear();
+  }, []);
+
+  /** 清理单人通话资源 */
+  const cleanupAndEnd = useCallback(() => {
+    stopRingSound();
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    pcsRef.current.forEach((pc) => pc.close());
+    pcsRef.current.clear();
+    cleanupAllRemoteAudio();
+    endCall();
+  }, [endCall, cleanupAllRemoteAudio]);
+
+  /** 清理群组通话资源 */
+  const cleanupGroupCall = useCallback(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    pcsRef.current.forEach((pc) => pc.close());
+    pcsRef.current.clear();
+    cleanupAllRemoteAudio();
+    leaveGroupCall();
+  }, [leaveGroupCall, cleanupAllRemoteAudio]);
+
+  /** 创建单人通话 PeerConnection */
   const createPeerConnection = useCallback((targetCallId: string, targetPeerId: string) => {
     const pc = new RTCPeerConnection(RTC_CONFIG);
 
@@ -64,14 +149,7 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
 
     pc.ontrack = (event) => {
       console.log('[WebRTC] 收到远端音频轨道');
-      // 播放远端音频
-      if (!remoteAudioRef.current) {
-        const audio = new Audio();
-        audio.autoplay = true;
-        document.body.appendChild(audio);
-        remoteAudioRef.current = audio;
-      }
-      remoteAudioRef.current.srcObject = event.streams[0];
+      playRemoteAudio(targetPeerId, event.streams[0]);
     };
 
     pc.onconnectionstatechange = () => {
@@ -90,72 +168,68 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
 
     pcRef.current = pc;
     return pc;
-  }, [wsSend, setConnected]);
+  }, [wsSend, setConnected, playRemoteAudio, cleanupAndEnd]);
 
-  /** 获取本地音频流并添加到连接 */
-  const startLocalAudio = useCallback(async (pc: RTCPeerConnection) => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      localStreamRef.current = stream;
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-      return stream;
-    } catch (err) {
-      console.error('[WebRTC] 获取麦克风失败:', err);
-      throw err;
-    }
-  }, []);
+  /** 创建多人通话 PeerConnection（与特定参与者） */
+  const createGroupPeerConnection = useCallback((callId: string, peerId: string) => {
+    const pc = new RTCPeerConnection(RTC_CONFIG);
 
-  /** 清理资源 */
-  const cleanupAndEnd = useCallback(() => {
-    // 停止本地音频
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        wsSend({
+          type: 'call_ice',
+          payload: {
+            call_id: callId,
+            sender_id: useAuthStore.getState().user?.id,
+            receiver_id: peerId,
+            candidate: event.candidate.candidate,
+            sdp_mid: event.candidate.sdpMid,
+            sdp_m_line_index: event.candidate.sdpMLineIndex,
+          },
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      console.log('[WebRTC] 收到群组远端音频轨道:', peerId);
+      playRemoteAudio(peerId, event.streams[0]);
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] 群组连接状态 (${peerId}):`, pc.connectionState);
+    };
+
+    // 添加本地音频轨道
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
+      localStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
     }
-    // 关闭 PeerConnection
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-    // 移除远端音频元素
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.pause();
-      remoteAudioRef.current.srcObject = null;
-      remoteAudioRef.current.remove();
-      remoteAudioRef.current = null;
-    }
-    endCall();
-  }, [endCall]);
 
-  /**
-   * 发起通话（呼叫方）
-   * 1. 发送 call_invite
-   * 2. 等待 call_status(ringing)
-   * 3. 收到 call_status(connected) 后创建 Offer
-   */
+    pcsRef.current.set(peerId, pc);
+    return pc;
+  }, [wsSend, playRemoteAudio]);
+
+  /** 发起单人通话 */
   const initiateCall = useCallback(async (targetPeerId: string, targetPeerName: string) => {
     const cid = `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const userId = useAuthStore.getState().user?.id || '';
     const userName = useAuthStore.getState().user?.displayName || '';
 
     console.log('[WebRTC] 发起通话:', cid, '目标:', targetPeerId);
-
-    // 初始化通话状态
     useCallStore.getState().startCall(cid, targetPeerId, targetPeerName);
 
-    // 创建 PeerConnection
     const pc = createPeerConnection(cid, targetPeerId);
 
-    // 获取麦克风（失败则取消通话）
     try {
-      await startLocalAudio(pc);
+      const stream = await startLocalAudio();
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
     } catch (err) {
       console.error('[WebRTC] 获取麦克风失败，取消通话');
       useCallStore.getState().endCall();
       return;
     }
 
-    // 发送通话邀请
     wsSend({
       type: 'call_invite',
       payload: {
@@ -169,41 +243,99 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     console.log('[WebRTC] 通话邀请已发送');
   }, [wsSend, createPeerConnection, startLocalAudio]);
 
-  /** 拒接来电 */
+  /** 创建群组通话 */
+  const createGroupCall = useCallback(async (groupId: string, groupName: string) => {
+    const cid = `group_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const userId = useAuthStore.getState().user?.id || '';
+    const userName = useAuthStore.getState().user?.displayName || '';
+
+    console.log('[WebRTC] 创建群组通话:', cid, '群组:', groupId);
+
+    try {
+      await startLocalAudio();
+    } catch (err) {
+      console.error('[WebRTC] 获取麦克风失败，无法创建群组通话');
+      return;
+    }
+
+    useCallStore.getState().createGroupCall(cid, groupId, groupName);
+
+    wsSend({
+      type: 'group_call_create',
+      payload: {
+        call_id: cid,
+        group_id: groupId,
+        creator_id: userId,
+        creator_name: userName,
+      },
+    });
+  }, [wsSend, startLocalAudio]);
+
+  /** 加入群组通话 */
+  const joinGroupCall = useCallback(async (callId: string, groupId: string, groupName: string) => {
+    const userName = useAuthStore.getState().user?.displayName || '';
+
+    console.log('[WebRTC] 加入群组通话:', callId);
+
+    try {
+      await startLocalAudio();
+    } catch (err) {
+      console.error('[WebRTC] 获取麦克风失败，无法加入群组通话');
+      return;
+    }
+
+    useCallStore.getState().joinGroupCall(callId, groupId, groupName);
+
+    wsSend({
+      type: 'group_call_join',
+      payload: {
+        call_id: callId,
+        user_id: useAuthStore.getState().user?.id,
+        user_name: userName,
+      },
+    });
+  }, [wsSend, startLocalAudio]);
+
+  /** 拒接来电 / 忽略群组通话邀请 */
   const rejectCall = useCallback(() => {
     const state = useCallStore.getState();
     if (state.callId) {
-      wsSend({
-        type: 'call_reject',
-        payload: {
-          call_id: state.callId,
-          user_id: useAuthStore.getState().user?.id,
-        },
-      });
+      // 群组通话邀请 → 直接忽略，不发送消息
+      if (state.callType !== 'group' || state.callStatus !== 'ringing') {
+        wsSend({
+          type: 'call_reject',
+          payload: {
+            call_id: state.callId,
+            user_id: useAuthStore.getState().user?.id,
+          },
+        });
+      }
     }
     cleanupAndEnd();
   }, [wsSend, cleanupAndEnd]);
 
-  /**
-   * 接听来电（被叫方）
-   * 1. 获取本地音频
-   * 2. 创建 PeerConnection
-   * 3. 发送 call_accept
-   */
+  /** 接听来电（支持单人和群组通话邀请） */
   const acceptCall = useCallback(async () => {
+    stopRingSound();
     const state = useCallStore.getState();
     if (!state.callId || !state.peerId) return;
 
+    // 群组通话邀请 → 加入群组通话
+    if (state.callType === 'group' && state.groupId) {
+      await joinGroupCall(state.callId, state.groupId, state.groupName || '群组通话');
+      return;
+    }
+
+    // 单人通话接听
     console.log('[WebRTC] 接听通话:', state.callId);
 
     const pc = createPeerConnection(state.callId, state.peerId);
 
-    // 获取麦克风（失败则拒接）
     try {
-      await startLocalAudio(pc);
+      const stream = await startLocalAudio();
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
     } catch (err) {
       console.error('[WebRTC] 获取麦克风失败，拒接通话');
-      // 发送拒接消息并清理（不引用 rejectCall 避免循环依赖）
       wsSend({
         type: 'call_reject',
         payload: {
@@ -215,7 +347,6 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
       return;
     }
 
-    // 发送接听消息
     wsSend({
       type: 'call_accept',
       payload: {
@@ -225,22 +356,33 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     });
 
     setStatus('connecting');
-  }, [wsSend, createPeerConnection, startLocalAudio, setStatus, cleanupAndEnd]);
+  }, [wsSend, createPeerConnection, startLocalAudio, setStatus, cleanupAndEnd, joinGroupCall]);
 
   /** 挂断通话 */
   const hangup = useCallback(() => {
     const state = useCallStore.getState();
     if (state.callId) {
-      wsSend({
-        type: 'call_hangup',
-        payload: {
-          call_id: state.callId,
-          user_id: useAuthStore.getState().user?.id,
-        },
-      });
+      if (state.callType === 'group') {
+        wsSend({
+          type: 'group_call_leave',
+          payload: {
+            call_id: state.callId,
+            user_id: useAuthStore.getState().user?.id,
+          },
+        });
+        cleanupGroupCall();
+      } else {
+        wsSend({
+          type: 'call_hangup',
+          payload: {
+            call_id: state.callId,
+            user_id: useAuthStore.getState().user?.id,
+          },
+        });
+        cleanupAndEnd();
+      }
     }
-    cleanupAndEnd();
-  }, [wsSend, cleanupAndEnd]);
+  }, [wsSend, cleanupAndEnd, cleanupGroupCall]);
 
   /** 切换静音 */
   const toggleMute = useCallback(() => {
@@ -253,8 +395,30 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     }
   }, []);
 
+  /** 为新参与者建立 P2P 连接 */
+  const connectToNewParticipant = useCallback(async (callId: string, peerId: string) => {
+    const pc = createGroupPeerConnection(callId, peerId);
+
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      wsSend({
+        type: 'call_offer',
+        payload: {
+          call_id: callId,
+          sender_id: useAuthStore.getState().user?.id,
+          receiver_id: peerId,
+          sdp_type: 'offer',
+          sdp: offer.sdp,
+        },
+      });
+    } catch (err) {
+      console.error('[WebRTC] 为新参与者创建 Offer 失败:', err);
+    }
+  }, [wsSend, createGroupPeerConnection]);
+
   /**
-   * 处理收到的信令消息（由 useWebSocket 调用）
+   * 处理收到的信令消息（由 useWebSocket 通过 callSignalingBus 调用）
    */
   const handleSignaling = useCallback(async (msg: { type: string; payload?: unknown }) => {
     const payload = msg.payload as Record<string, unknown> | undefined;
@@ -263,9 +427,9 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
 
     switch (msg.type) {
       case 'call_invite': {
-        // 被叫方收到来电
         const p = payload as { call_id: string; caller_id: string; caller_name: string };
         useCallStore.getState().receiveCall(p.call_id, p.caller_id, p.caller_name);
+        playRingSound();
         break;
       }
 
@@ -280,7 +444,6 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
             callStore.setStatus('ringing');
             break;
           case 'connected':
-            // 呼叫方在 connected 后创建 Offer
             if (callStore.role === 'caller' && pcRef.current) {
               try {
                 const offer = await pcRef.current.createOffer();
@@ -311,21 +474,85 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
         break;
       }
 
-      case 'call_offer': {
-        // 被叫方收到 Offer → 创建 Answer
-        const p = payload as { call_id: string; sender_id: string; sdp: string };
+      // ---- 群组通话信令 ----
+      case 'group_call_participants': {
+        const p = payload as { call_id: string; participants: GroupCallParticipant[] };
+        const callStore = useCallStore.getState();
 
-        if (!pcRef.current) {
+        if (p.call_id !== callStore.callId) break;
+
+        const currentUserId = useAuthStore.getState().user?.id;
+        const newParticipantIds = p.participants
+          .filter((pp) => pp.user_id !== currentUserId)
+          .map((pp) => pp.user_id);
+
+        updateParticipants(p.participants);
+
+        // 为新参与者建立连接（仅 user_id 较小的一方创建 Offer，避免 Offer/Offer 冲突）
+        for (const peerId of newParticipantIds) {
+          if (!pcsRef.current.has(peerId) && currentUserId && currentUserId < peerId) {
+            await connectToNewParticipant(p.call_id, peerId);
+          }
+        }
+
+        if (callStore.callStatus !== 'connected') {
+          setStatus('connected');
+        }
+        break;
+      }
+
+      case 'group_call_invite': {
+        const invite = payload as {
+          call_id: string;
+          group_id: string;
+          group_name: string;
+          caller_id: string;
+          caller_name: string;
+        };
+        console.log('[WebRTC] 收到群组通话邀请:', invite);
+        // 存储邀请信息，UI 层可监听此状态变化显示加入提示
+        useCallStore.getState().receiveCall(
+          invite.call_id,
+          invite.caller_id,
+          invite.caller_name,
+        );
+        // 标记为群组通话类型
+        useCallStore.setState({ callType: 'group', groupId: invite.group_id, groupName: invite.group_name });
+        break;
+      }
+
+      case 'group_call_ended': {
+        cleanupGroupCall();
+        break;
+      }
+
+      case 'call_offer': {
+        const p = payload as { call_id: string; sender_id: string; sdp: string };
+        const callStore = useCallStore.getState();
+
+        let pc: RTCPeerConnection | null = null;
+
+        if (callStore.callType === 'group') {
+          let groupPc = pcsRef.current.get(p.sender_id);
+          if (!groupPc) {
+            groupPc = createGroupPeerConnection(p.call_id, p.sender_id);
+          }
+          pc = groupPc;
+        } else {
+          pc = pcRef.current;
+        }
+
+        if (!pc) {
           console.warn('[WebRTC] 收到 Offer 但 PeerConnection 未就绪');
           break;
         }
 
         try {
-          await pcRef.current.setRemoteDescription(
+          await pc.setRemoteDescription(
             new RTCSessionDescription({ type: 'offer', sdp: p.sdp }),
           );
-          const answer = await pcRef.current.createAnswer();
-          await pcRef.current.setLocalDescription(answer);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
           wsSend({
             type: 'call_answer',
             payload: {
@@ -338,34 +565,62 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
           });
         } catch (err) {
           console.error('[WebRTC] 处理 Offer 失败:', err);
-          cleanupAndEnd();
+          if (callStore.callType !== 'group') {
+            cleanupAndEnd();
+          }
         }
         break;
       }
 
       case 'call_answer': {
-        // 呼叫方收到 Answer → 设置远端描述
-        const p = payload as { call_id: string; sdp: string };
-        if (!pcRef.current) break;
+        const p = payload as { call_id: string; sender_id: string; sdp: string };
+        const callStore = useCallStore.getState();
+
+        let pc: RTCPeerConnection | null = null;
+
+        if (callStore.callType === 'group') {
+          pc = pcsRef.current.get(p.sender_id) || null;
+        } else {
+          pc = pcRef.current;
+        }
+
+        if (!pc) break;
 
         try {
-          await pcRef.current.setRemoteDescription(
+          await pc.setRemoteDescription(
             new RTCSessionDescription({ type: 'answer', sdp: p.sdp }),
           );
         } catch (err) {
           console.error('[WebRTC] 处理 Answer 失败:', err);
-          cleanupAndEnd();
+          if (callStore.callType !== 'group') {
+            cleanupAndEnd();
+          }
         }
         break;
       }
 
       case 'call_ice': {
-        // 收到 ICE candidate
-        const p = payload as { call_id: string; candidate: string; sdp_mid: string; sdp_m_line_index: number };
-        if (!pcRef.current) break;
+        const p = payload as {
+          call_id: string;
+          sender_id: string;
+          candidate: string;
+          sdp_mid: string;
+          sdp_m_line_index: number;
+        };
+        const callStore = useCallStore.getState();
+
+        let pc: RTCPeerConnection | null = null;
+
+        if (callStore.callType === 'group') {
+          pc = pcsRef.current.get(p.sender_id) || null;
+        } else {
+          pc = pcRef.current;
+        }
+
+        if (!pc) break;
 
         try {
-          await pcRef.current.addIceCandidate(
+          await pc.addIceCandidate(
             new RTCIceCandidate({
               candidate: p.candidate,
               sdpMid: p.sdp_mid,
@@ -378,17 +633,21 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
         break;
       }
     }
-  }, [wsSend, cleanupAndEnd]);
+  }, [wsSend, cleanupAndEnd, cleanupGroupCall, updateParticipants, connectToNewParticipant, createGroupPeerConnection, setStatus]);
 
-  // 注册 initiateCall 到模块级引用，供其他组件调用
+  // 注册函数到模块级引用
   useEffect(() => {
     _initiateCallRef = initiateCall;
+    _createGroupCallRef = createGroupCall;
+    _joinGroupCallRef = joinGroupCall;
     return () => {
       _initiateCallRef = null;
+      _createGroupCallRef = null;
+      _joinGroupCallRef = null;
     };
-  }, [initiateCall]);
+  }, [initiateCall, createGroupCall, joinGroupCall]);
 
-  // 注册 handleSignaling 到信令总线，供 useWebSocket 调用
+  // 注册 handleSignaling 到信令总线
   useEffect(() => {
     setCallSignalingHandler(handleSignaling);
     return () => {
@@ -405,6 +664,8 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
 
   return {
     initiateCall,
+    createGroupCall,
+    joinGroupCall,
     acceptCall,
     rejectCall,
     hangup,
