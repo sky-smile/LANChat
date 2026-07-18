@@ -189,10 +189,13 @@ function Admin() {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
-      render: (role: string) => (
-        <Tag color={role === 'admin' ? 'red' : 'blue'}>
-          {role === 'admin' ? '管理员' : '用户'}
-        </Tag>
+      render: (role: string, record: AdminUser) => (
+        <>
+          <Tag color={role === 'admin' ? 'red' : 'blue'}>
+            {role === 'admin' ? '管理员' : '用户'}
+          </Tag>
+          {record.username === 'admin' && <Tag color="gold">超级管理员</Tag>}
+        </>
       ),
     },
     {
@@ -214,32 +217,37 @@ function Admin() {
     {
       title: '操作',
       key: 'actions',
-      render: (_: unknown, record: AdminUser) => (
-        <Space>
-          <Button
-            type="text"
-            icon={<EditOutlined />}
-            onClick={() => openEditModal(record)}
-            title="编辑"
-          />
-          <Button
-            type="text"
-            icon={<KeyOutlined />}
-            onClick={() => openPasswordModal(record)}
-            title="重置密码"
-          />
-          <Popconfirm
-            title="确定删除此用户？"
-            description="删除后不可恢复"
-            onConfirm={() => handleDelete(record.id)}
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} title="删除" />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: unknown, record: AdminUser) => {
+        const isProtected = record.username === 'admin';
+        return (
+          <Space>
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => openEditModal(record)}
+              title="编辑"
+            />
+            <Button
+              type="text"
+              icon={<KeyOutlined />}
+              onClick={() => openPasswordModal(record)}
+              title="重置密码"
+            />
+            {!isProtected && (
+              <Popconfirm
+                title="确定删除此用户？"
+                description="删除后不可恢复"
+                onConfirm={() => handleDelete(record.id)}
+                okText="删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button type="text" danger icon={<DeleteOutlined />} title="删除" />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -326,7 +334,10 @@ function Admin() {
             <Input />
           </Form.Item>
           <Form.Item name="role" label="角色">
-            <Select options={[{ value: 'user', label: '用户' }, { value: 'admin', label: '管理员' }]} />
+            <Select
+              options={[{ value: 'user', label: '用户' }, { value: 'admin', label: '管理员' }]}
+              disabled={editingUser?.username === 'admin'}
+            />
           </Form.Item>
           <Form.Item>
             <Space style={{ width: '100%', justifyContent: 'flex-end' }}>

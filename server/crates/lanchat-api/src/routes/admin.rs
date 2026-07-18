@@ -168,6 +168,17 @@ async fn update_user(
     Path(user_id): Path<Uuid>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<ApiResponse<User>>, AppError> {
+    // 先查询用户，检查是否为受保护的超级管理员
+    let existing = lanchat_core::repository::user_repository::find_by_id(&state.db, &user_id)
+        .await
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or(AppError(ApiError::NotFound("用户不存在".to_string())))?;
+
+    // 超级管理员的角色不可修改
+    if existing.username == PROTECTED_ADMIN && req.role.is_some() && req.role.as_deref() != Some("admin") {
+        return Err(AppError(ApiError::ValidationError("超级管理员角色不可修改".to_string())));
+    }
+
     let user = sqlx::query_as::<_, User>(
         "UPDATE users SET display_name = COALESCE($2, display_name), \
          department = COALESCE($3, department), role = COALESCE($4, role), \
@@ -186,11 +197,24 @@ async fn update_user(
     Ok(Json(ApiResponse::success(user)))
 }
 
+/// 受保护的超级管理员用户名
+const PROTECTED_ADMIN: &str = "admin";
+
 /// 删除用户
 async fn delete_user(
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
+    // 先查询用户，检查是否为受保护的超级管理员
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &user_id)
+        .await
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or(AppError(ApiError::NotFound("用户不存在".to_string())))?;
+
+    if user.username == PROTECTED_ADMIN {
+        return Err(AppError(ApiError::ValidationError("超级管理员账户不可删除".to_string())));
+    }
+
     let result = sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(user_id)
         .execute(&state.db)
