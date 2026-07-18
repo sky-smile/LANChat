@@ -2,12 +2,13 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  border-right: 1px solid #e8e8e8;
 }
 
 .sidebar-header {
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: 16px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -16,8 +17,8 @@
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
+  padding: 8px;
+  border-radius: 8px;
   transition: background-color 0.3s;
 }
 
@@ -47,7 +48,7 @@
 }
 
 .sidebar-search .ant-input-affix-wrapper {
-  border-radius: 6px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.1);
   border: none;
 }
@@ -103,15 +104,15 @@
 .conversation-empty {
   text-align: center;
   color: rgba(255, 255, 255, 0.45);
-  padding: 24px 0;
+  padding: 32px 0;
   font-size: 13px;
 }
 
 .conversation-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 12px 16px;
   cursor: pointer;
   transition: background-color 0.2s;
   border-left: 3px solid transparent;
