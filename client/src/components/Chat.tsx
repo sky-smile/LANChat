@@ -365,10 +365,8 @@ function Chat() {
           const isOwn = msg.senderId === currentUserId;
           const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
           const showTime = shouldShowTimeDivider(msg.createdAt, prevMsg?.createdAt);
-          // 群聊中，连续同一条消息不重复显示发送者
-          const showSender = isGroup && !isOwn && (idx === 0 || messages[idx - 1]?.senderId !== msg.senderId);
           return (
-            <div key={msg.id}>
+            <div key={msg.id} className={`message-wrapper ${isOwn ? 'wrapper-own' : 'wrapper-other'}`}>
               {showTime && (
                 <div className="message-time-divider">
                   <span>{formatDividerTime(msg.createdAt)}</span>
@@ -377,12 +375,12 @@ function Chat() {
               <div className={`message-row ${isOwn ? 'message-own' : 'message-other'}`}>
                 {!isOwn && (
                   <div className="message-avatar-col">
-                    {showSender && <Avatar size="small" icon={<UserOutlined />} />}
+                    <Avatar size="small" icon={<UserOutlined />} />
                   </div>
                 )}
                 <Dropdown menu={{ items: getMessageMenuItems(msg) }} trigger={['contextMenu']}>
                   <div className={`message-bubble ${isOwn ? 'bubble-own' : 'bubble-other'}`}>
-                    {isGroup && !isOwn && showSender && (
+                    {isGroup && !isOwn && (
                       <div className="message-sender-name">{msg.senderName || '未知用户'}</div>
                     )}
                     {renderMessageContent(msg)}
@@ -401,6 +399,11 @@ function Chat() {
                     </div>
                   </div>
                 </Dropdown>
+                {isOwn && (
+                  <div className="message-avatar-col">
+                    <Avatar size="small" icon={<UserOutlined />} />
+                  </div>
+                )}
               </div>
             </div>
           );
