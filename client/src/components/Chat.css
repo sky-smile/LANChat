@@ -152,9 +152,10 @@
   padding: 8px 12px;
   border-radius: 12px;
   max-width: 100%;
-  word-break: break-word;
-  overflow-wrap: break-word;
   min-width: 0;
+  width: fit-content;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .bubble-own {
@@ -182,8 +183,6 @@
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: break-word;
 }
 
 .message-time {
