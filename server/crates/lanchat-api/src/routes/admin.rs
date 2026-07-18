@@ -106,6 +106,11 @@ struct CreateUserRequest {
     role: Option<String>,
 }
 
+/// 将空字符串转换为 None
+fn empty_to_none(opt: Option<String>) -> Option<String> {
+    opt.filter(|s| !s.trim().is_empty())
+}
+
 /// 创建用户
 async fn create_user(
     State(state): State<AppState>,
@@ -123,6 +128,10 @@ async fn create_user(
     // 哈希密码
     let password_hash = lanchat_common::auth::hash_password(&req.password)?;
 
+    // 空字符串转为 None
+    let display_name = empty_to_none(req.display_name);
+    let department = empty_to_none(req.department);
+
     // 创建用户
     let user = sqlx::query_as::<_, User>(
         "INSERT INTO users (username, password_hash, display_name, department, role) \
@@ -131,8 +140,8 @@ async fn create_user(
     )
     .bind(&req.username)
     .bind(&password_hash)
-    .bind(&req.display_name)
-    .bind(&req.department)
+    .bind(&display_name)
+    .bind(&department)
     .bind(req.role.unwrap_or_else(|| "user".to_string()))
     .fetch_one(&state.db)
     .await
@@ -179,6 +188,10 @@ async fn update_user(
         return Err(AppError(ApiError::ValidationError("超级管理员角色不可修改".to_string())));
     }
 
+    // 空字符串转为 None
+    let display_name = empty_to_none(req.display_name);
+    let department = empty_to_none(req.department);
+
     let user = sqlx::query_as::<_, User>(
         "UPDATE users SET display_name = COALESCE($2, display_name), \
          department = COALESCE($3, department), role = COALESCE($4, role), \
@@ -186,8 +199,8 @@ async fn update_user(
          RETURNING id, username, password_hash, display_name, avatar_url, department, role, status, last_seen_at, created_at, updated_at"
     )
     .bind(user_id)
-    .bind(&req.display_name)
-    .bind(&req.department)
+    .bind(&display_name)
+    .bind(&department)
     .bind(&req.role)
     .fetch_optional(&state.db)
     .await
