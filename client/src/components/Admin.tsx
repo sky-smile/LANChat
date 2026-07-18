@@ -173,12 +173,6 @@ function Admin() {
 
   const columns = [
     {
-      title: '#',
-      key: 'index',
-      width: 50,
-      render: (_: unknown, __: AdminUser, index: number) => index + 1,
-    },
-    {
       title: '用户',
       key: 'user',
       render: (_: unknown, record: AdminUser) => (
