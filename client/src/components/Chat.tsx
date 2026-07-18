@@ -92,14 +92,32 @@ function Chat() {
     loadHistory();
   }, [currentConversation]);
 
-  // 打开对话时发送已读回执
+  // 打开对话时发送已读回执，以及页面重新可见时刷新已读状态
   useEffect(() => {
     if (!currentConversation) return;
-    // 直接从 store 读取，避免依赖 currentConv 导致无限循环
-    const conv = useChatStore.getState().conversations.find((c) => c.id === currentConversation);
-    if (!conv) return;
-    sendMarkRead(currentConversation, conv.type);
-    useChatStore.getState().markAsRead(currentConversation);
+
+    const sendReadForCurrent = () => {
+      // 直接从 store 读取，避免依赖 currentConv 导致无限循环
+      const conv = useChatStore.getState().conversations.find((c) => c.id === currentConversation);
+      if (!conv) return;
+      sendMarkRead(currentConversation, conv.type);
+      useChatStore.getState().markAsRead(currentConversation);
+    };
+
+    // 打开会话时立即发送
+    sendReadForCurrent();
+
+    // 页面从隐藏变为可见时，重新发送已读（处理切换标签页返回的场景）
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        sendReadForCurrent();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [currentConversation, sendMarkRead]);
 
   const handleSend = () => {

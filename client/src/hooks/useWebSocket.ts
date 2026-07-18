@@ -107,6 +107,11 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
           ? payload.receiver_id
           : (payload.sender_id === currentUserId ? payload.receiver_id : payload.sender_id);
 
+        // 判断是否正在查看该会话：当前会话匹配 + 页面可见
+        const currentConv = useChatStore.getState().currentConversation;
+        const isVisible = document.visibilityState === 'visible';
+        const isViewingConv = currentConv === convId && isVisible;
+
         addMessage(convId, {
           id: payload.id,
           senderId: payload.sender_id,
@@ -116,7 +121,8 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
           content: payload.content,
           messageType: payload.message_type as 'text' | 'image' | 'file' | 'system',
           metadata: payload.metadata,
-          isRead: false,
+          // 如果正在查看该会话，直接标记为已读
+          isRead: isViewingConv,
           createdAt: payload.created_at,
         });
 
@@ -128,12 +134,20 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
           }
         }
 
-        // 播放提示音（非自己消息且非当前活跃会话时）
+        // 非自己消息
         if (payload.sender_id !== currentUserId) {
-          const currentConv = useChatStore.getState().currentConversation;
-          const isVisible = document.visibilityState === 'visible';
-          const isCurrentConv = currentConv === convId && isVisible;
-          if (!isCurrentConv) {
+          if (isViewingConv) {
+            // 正在查看该会话：立即发送已读通知给发送者
+            const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+            wsRef.current?.send(JSON.stringify({
+              type: 'mark_read',
+              payload: {
+                sender_id: payload.sender_id,
+                receiver_type: conv?.type || payload.receiver_type,
+              },
+            }));
+          } else {
+            // 未在查看该会话：播放提示音
             playMessageSound();
           }
         }
