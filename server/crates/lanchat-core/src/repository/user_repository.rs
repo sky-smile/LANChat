@@ -56,6 +56,18 @@ pub async fn search_users(pool: &PgPool, query: &str, exclude_id: &Uuid, limit: 
     .await
 }
 
+/// 获取所有用户（排除指定用户，用于联系人列表）
+pub async fn get_all_users(pool: &PgPool, exclude_id: &Uuid, limit: i64) -> Result<Vec<User>, sqlx::Error> {
+    sqlx::query_as::<_, User>(
+        "SELECT id, username, password_hash, display_name, avatar_url, department, role, status, last_seen_at, created_at, updated_at \
+         FROM users WHERE id != $1 ORDER BY username LIMIT $2"
+    )
+    .bind(exclude_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
 /// 更新用户资料
 pub async fn update_profile(
     pool: &PgPool,

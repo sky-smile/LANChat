@@ -25,6 +25,7 @@ pub fn auth_protected_routes() -> Router<AppState> {
     Router::new()
         .route("/me", get(me_handler).put(update_me_handler))
         .route("/search", get(search_users_handler))
+        .route("/users", get(list_users_handler))
 }
 
 /// 登录处理
@@ -119,6 +120,26 @@ async fn search_users_handler(
         &query.q,
         &uid,
         limit,
+    )
+    .await
+    .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+
+    Ok(Json(ApiResponse::success(users)))
+}
+
+/// 获取所有用户（联系人列表）
+async fn list_users_handler(
+    State(state): State<AppState>,
+    axum::extract::Extension(user_id): axum::extract::Extension<String>,
+) -> Result<Json<ApiResponse<Vec<lanchat_core::models::User>>>, AppError> {
+    let uid = Uuid::parse_str(&user_id).map_err(|e| {
+        AppError(ApiError::AuthError(lanchat_common::error::AuthError::TokenError(e.to_string())))
+    })?;
+
+    let users = lanchat_core::repository::user_repository::get_all_users(
+        &state.db,
+        &uid,
+        100,
     )
     .await
     .map_err(|e| AppError(ApiError::DatabaseError(e)))?;

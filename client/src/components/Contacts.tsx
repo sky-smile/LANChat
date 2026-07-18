@@ -40,18 +40,28 @@ function Contacts() {
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [form] = Form.useForm();
   const navigate = useNavigate();
-  const { addConversation, setCurrentConversation, conversations } = useChatStore();
+  const { addConversation, setCurrentConversation } = useChatStore();
 
-  // 已有会话中的联系人（去重）
-  const recentContacts = conversations
-    .filter((c) => c.type === 'user')
-    .map((c) => ({
-      id: c.id,
-      username: c.name,
-      displayName: c.name,
-      avatarUrl: c.avatar,
-      status: c.status || 'offline',
-    } as ContactItem));
+  // 加载所有联系人
+  const loadContacts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const resp = await api.get('/auth/users');
+      const users = (resp.data.data || []).map((u: Record<string, unknown>) => ({
+        id: u.id as string,
+        username: u.username as string,
+        displayName: (u.display_name as string) || '',
+        avatarUrl: u.avatar_url as string | undefined,
+        department: u.department as string | undefined,
+        status: (u.status as string) || 'offline',
+      }));
+      setContacts(users);
+    } catch (err) {
+      console.error('加载联系人失败', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // 加载群组列表
   const loadGroups = useCallback(async () => {
@@ -69,7 +79,7 @@ function Contacts() {
   // 搜索用户
   const searchContacts = useCallback(async (query: string) => {
     if (!query.trim()) {
-      setContacts([]);
+      loadContacts();
       return;
     }
     setLoading(true);
@@ -89,13 +99,13 @@ function Contacts() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadContacts]);
 
+  // 页面加载时获取所有联系人和群组
   useEffect(() => {
-    if (activeTab === 'groups') {
-      loadGroups();
-    }
-  }, [activeTab, loadGroups]);
+    loadContacts();
+    loadGroups();
+  }, [loadContacts, loadGroups]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -158,13 +168,13 @@ function Contacts() {
   const tabItems = [
     {
       key: 'contacts',
-      label: '联系人',
+      label: `联系人 (${contacts.length})`,
       children: (
         <div className="contacts-list-container">
           <div className="contacts-search">
             <Input
               prefix={<SearchOutlined />}
-              placeholder="搜索用户..."
+              placeholder="搜索联系人..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               allowClear
@@ -172,57 +182,32 @@ function Contacts() {
           </div>
           {loading ? (
             <div className="contacts-loading"><Spin /></div>
-          ) : searchQuery.trim() ? (
-            contacts.length === 0 ? (
-              <Empty description="未找到用户" />
-            ) : (
-              <List
-                dataSource={contacts}
-                renderItem={(contact) => (
-                  <div className="contact-item" onClick={() => startChat(contact)}>
-                    <Avatar icon={<UserOutlined />} src={contact.avatarUrl} />
-                    <div className="contact-info">
-                      <div className="contact-name">{contact.displayName || contact.username}</div>
-                      <div className="contact-meta">
-                        <span className="contact-username">@{contact.username}</span>
-                        {contact.department && <span className="contact-dept">{contact.department}</span>}
-                      </div>
-                    </div>
-                    <div className={`status-dot ${contact.status}`} />
-                  </div>
-                )}
-              />
-            )
+          ) : contacts.length === 0 ? (
+            <Empty description={searchQuery.trim() ? "未找到联系人" : "暂无联系人"} />
           ) : (
-            recentContacts.length === 0 ? (
-              <Empty description="暂无联系人，请搜索添加" />
-            ) : (
-              <>
-                <div className="contacts-section-title">最近联系</div>
-                <List
-                  dataSource={recentContacts}
-                  renderItem={(contact) => (
-                    <div className="contact-item" onClick={() => startChat(contact)}>
-                      <Avatar icon={<UserOutlined />} src={contact.avatarUrl} />
-                      <div className="contact-info">
-                        <div className="contact-name">{contact.displayName || contact.username}</div>
-                        <div className="contact-meta">
-                          <span className="contact-username">@{contact.username}</span>
-                        </div>
-                      </div>
-                      <div className={`status-dot ${contact.status}`} />
+            <List
+              dataSource={contacts}
+              renderItem={(contact) => (
+                <div className="contact-item" onClick={() => startChat(contact)}>
+                  <Avatar icon={<UserOutlined />} src={contact.avatarUrl} />
+                  <div className="contact-info">
+                    <div className="contact-name">{contact.displayName || contact.username}</div>
+                    <div className="contact-meta">
+                      <span className="contact-username">@{contact.username}</span>
+                      {contact.department && <span className="contact-dept">{contact.department}</span>}
                     </div>
-                  )}
-                />
-              </>
-            )
+                  </div>
+                  <div className={`status-dot ${contact.status}`} />
+                </div>
+              )}
+            />
           )}
         </div>
       ),
     },
     {
       key: 'groups',
-      label: '群组',
+      label: `群组 (${groups.length})`,
       children: (
         <div className="contacts-list-container">
           <div className="contacts-toolbar">
