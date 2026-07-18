@@ -24,6 +24,27 @@ function VoiceCall({ onAccept, onReject, onHangup, onToggleMute }: VoiceCallProp
   } = useCallStore();
   const [duration, setDuration] = useState('00:00');
 
+  // 组件挂载时重置残留的通话状态（如页面刷新后）
+  useEffect(() => {
+    const state = useCallStore.getState();
+    if (state.callStatus !== 'idle') {
+      // 直接重置到 idle，不经过 'ended' 状态（避免闪现遮罩层）
+      useCallStore.setState({
+        callStatus: 'idle',
+        callId: null,
+        callType: 'single',
+        peerId: null,
+        peerName: null,
+        role: null,
+        isMuted: false,
+        connectedAt: null,
+        groupId: null,
+        groupName: null,
+        participants: [],
+      });
+    }
+  }, []);
+
   // 通话计时
   useEffect(() => {
     if (callStatus !== 'connected' || !connectedAt) return;

@@ -41,6 +41,8 @@ export const useAuthStore = create<AuthState>()(
         });
 
         const { token, user } = response.data.data;
+        // 登录成功后立即标记为在线（不等待 WebSocket 确认）
+        user.status = 'online';
         set({
           token,
           user,

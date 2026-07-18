@@ -71,7 +71,13 @@ function Admin() {
       if (search) params.search = search;
       const resp = await api.get<{ code: number; data: UserListResponse }>('/admin/users', { params });
       if (resp.data.code === 0) {
-        setUsers(resp.data.data.users);
+        // 超级管理员置顶
+        const sorted = [...resp.data.data.users].sort((a, b) => {
+          if (a.username === 'admin') return -1;
+          if (b.username === 'admin') return 1;
+          return 0;
+        });
+        setUsers(sorted);
         setTotal(resp.data.data.total);
       }
     } catch (err) {
@@ -167,6 +173,12 @@ function Admin() {
 
   const columns = [
     {
+      title: '#',
+      key: 'index',
+      width: 50,
+      render: (_: unknown, __: AdminUser, index: number) => index + 1,
+    },
+    {
       title: '用户',
       key: 'user',
       render: (_: unknown, record: AdminUser) => (
@@ -189,14 +201,16 @@ function Admin() {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
-      render: (role: string, record: AdminUser) => (
-        <>
+      render: (role: string, record: AdminUser) => {
+        if (record.username === 'admin') {
+          return <Tag color="gold">超级管理员</Tag>;
+        }
+        return (
           <Tag color={role === 'admin' ? 'red' : 'blue'}>
             {role === 'admin' ? '管理员' : '用户'}
           </Tag>
-          {record.username === 'admin' && <Tag color="gold">超级管理员</Tag>}
-        </>
-      ),
+        );
+      },
     },
     {
       title: '状态',
