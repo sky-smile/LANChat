@@ -117,7 +117,7 @@
 }
 
 .message-own {
-  flex-direction: row-reverse;
+  /* 不使用 row-reverse，保持气泡-头像的顺序 */
 }
 
 .message-other {
