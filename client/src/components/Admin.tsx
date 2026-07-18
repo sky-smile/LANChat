@@ -63,6 +63,20 @@ function Admin() {
   const [editForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
 
+  // 编辑弹窗打开后设置表单初始值
+  useEffect(() => {
+    if (editModalOpen && editingUser) {
+      // 使用 setTimeout 确保 Form 已挂载
+      setTimeout(() => {
+        editForm.setFieldsValue({
+          display_name: editingUser.display_name || '',
+          department: editingUser.department || '',
+          role: editingUser.role,
+        });
+      }, 0);
+    }
+  }, [editModalOpen, editingUser, editForm]);
+
   // 加载用户列表
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -157,11 +171,6 @@ function Admin() {
 
   const openEditModal = (user: AdminUser) => {
     setEditingUser(user);
-    editForm.setFieldsValue({
-      display_name: user.display_name || '',
-      department: user.department || '',
-      role: user.role,
-    });
     setEditModalOpen(true);
   };
 
