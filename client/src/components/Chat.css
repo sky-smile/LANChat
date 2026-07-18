@@ -94,17 +94,16 @@
 
 /* 消息外层包装 - 作为 flex 子元素控制对齐 */
 .message-wrapper {
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
 
 .wrapper-own {
-  align-self: flex-end;
   align-items: flex-end;
 }
 
 .wrapper-other {
-  align-self: flex-start;
   align-items: flex-start;
 }
 
@@ -152,10 +151,8 @@
   padding: 8px 12px;
   border-radius: 12px;
   max-width: 100%;
-  min-width: 0;
-  width: fit-content;
   word-break: normal;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .bubble-own {
