@@ -36,6 +36,7 @@ function Chat() {
   const { sendMessage, sendMarkRead } = useWebSocket();
 
   const currentConv = conversations.find((c) => c.id === currentConversation);
+  const isGroup = currentConv?.type === 'group';
 
   // 发起语音通话
   const handleVoiceCall = () => {
@@ -447,9 +448,6 @@ function Chat() {
       onClick: () => handleCopyMessage(msg.content),
     },
   ];
-
-  // 判断是否是群聊
-  const isGroup = currentConv?.type === 'group';
 
   // 时间分组：5分钟内的消息归为一组
   const shouldShowTimeDivider = (curr: string, prev?: string) => {
