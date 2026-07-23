@@ -12,6 +12,8 @@ function getAudioContext(): AudioContext {
 
 // 播放消息提示音（简短的"叮"声）
 export function playMessageSound() {
+  // 检查提示音开关状态
+  if (localStorage.getItem('lanchat-notify-sound') === 'off') return;
   try {
     const ctx = getAudioContext();
     if (ctx.state === 'suspended') {
