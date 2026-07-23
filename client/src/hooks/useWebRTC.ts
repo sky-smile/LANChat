@@ -7,7 +7,14 @@ import { playRingSound, stopRingSound } from '@/utils/notification';
 /** WebRTC 配置 */
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
+    // 公共 STUN 服务器（局域网内主要用 STUN）
     { urls: 'stun:stun.l.google.com:19302' },
+    // 私有 TURN 服务器（通过环境变量配置，用于跨 NAT 场景）
+    ...(import.meta.env.VITE_TURN_URL ? [{
+      urls: import.meta.env.VITE_TURN_URL as string,
+      username: import.meta.env.VITE_TURN_USERNAME as string || 'lanchat',
+      credential: import.meta.env.VITE_TURN_CREDENTIAL as string || '',
+    }] : []),
   ],
 };
 

@@ -76,7 +76,33 @@ services:
     depends_on:
       - api
 
+  # TURN/STUN 服务器（WebRTC 语音通话）
+  coturn:
+    image: coturn/coturn:latest
+    container_name: lanchat-coturn
+    environment:
+      DETECT_EXTERNAL_IP: yes
+      DETECT_RELAY_IP: yes
+      TURN_USERNAME: ${TURN_USERNAME:-lanchat}
+      TURN_PASSWORD: ${TURN_PASSWORD:-turn_password_change_me}
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      # TURN relay 端口范围
+      - "49152-49200:49152-49200/udp"
+    volumes:
+      - turn_data:/var/lib/turn
+    healthcheck:
+      test: ["CMD", "turnutils_uclient", "-T", "-u", "${TURN_USERNAME:-lanchat}", "-w", "${TURN_PASSWORD:-turn_password_change_me}", "127.0.0.1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres_data:
+  redis_data:
+  turn_data:
   redis_data:
   uploads_data:
