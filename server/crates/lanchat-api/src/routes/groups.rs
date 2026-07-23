@@ -368,19 +368,47 @@ async fn remove_member_handler(
     let target_uid = Uuid::parse_str(&target_user_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的目标用户ID".to_string())))?;
 
-    // 检查操作者是否是管理员或群成员
+    // 检查操作者权限
     let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
         .await
         .map_err(|e| AppError(ApiError::DatabaseError(e)))?
         .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
+    // 管理员可以移除任何成员
     if user.role != "admin" {
-        let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+        // 获取操作者的群内角色
+        let operator_role = lanchat_core::repository::group_repository::get_member_role(&state.db, &gid, &uid)
             .await
             .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
-        if !is_member {
-            return Err(AppError(ApiError::NotFound("群组不存在或无权操作".to_string())));
+
+        match operator_role {
+            Some(role) if role == "owner" => {
+                // 群主可以移除普通成员，但不能移除自己
+                if uid == target_uid {
+                    // 群主不能直接退出，需先转让群主
+                    return Err(AppError(ApiError::ValidationError("群主不能直接退出群组，请先转让群主".to_string())));
+                }
+            }
+            Some(_) => {
+                // 普通成员只能移除自己（退出群组）
+                if uid != target_uid {
+                    return Err(AppError(ApiError::AuthError(lanchat_common::error::AuthError::Forbidden)));
+                }
+            }
+            None => {
+                // 非群成员无权操作
+                return Err(AppError(ApiError::AuthError(lanchat_common::error::AuthError::Forbidden)));
+            }
         }
+    }
+
+    // 检查目标用户是否是群主（群主不能被移除）
+    let target_role = lanchat_core::repository::group_repository::get_member_role(&state.db, &gid, &target_uid)
+        .await
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+
+    if target_role.as_deref() == Some("owner") && user.role != "admin" {
+        return Err(AppError(ApiError::ValidationError("不能移除群主".to_string())));
     }
 
     let removed = lanchat_core::services::group::remove_member(&state.db, &gid, &target_uid)

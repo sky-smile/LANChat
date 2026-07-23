@@ -237,6 +237,22 @@ pub async fn is_member(
     Ok(exists)
 }
 
+/// 获取用户在群组中的角色
+pub async fn get_member_role(
+    pool: &PgPool,
+    group_id: &Uuid,
+    user_id: &Uuid,
+) -> Result<Option<String>, sqlx::Error> {
+    let role = sqlx::query_scalar::<_, String>(
+        "SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(role)
+}
+
 /// 获取群组成员数量
 pub async fn get_member_count(
     pool: &PgPool,
