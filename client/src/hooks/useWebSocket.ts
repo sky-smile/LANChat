@@ -53,12 +53,19 @@ const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const PING_INTERVAL = 30000;
 
+// 待发送消息队列
+interface QueuedMessage {
+  msg: WsMessage;
+  timestamp: number;
+}
+
 export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | null>) {
   const internalWsRef = useRef<WebSocket | null>(null);
   const wsRef = externalWsRef || internalWsRef;
   const reconnectAttemptsRef = useRef(0);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval>>();
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const messageQueueRef = useRef<QueuedMessage[]>([]);
 
   const token = useAuthStore((state) => state.token);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -81,6 +88,8 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
         console.log('[WS] 认证成功', msg.payload);
         reconnectAttemptsRef.current = 0;
         updateUserStatus('online');
+        // 刷新待发送消息队列
+        flushMessageQueue();
         // WS 连接就绪后，为当前会话发送已读回执
         {
           const currentConv = useChatStore.getState().currentConversation;
@@ -338,15 +347,36 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
     };
   }, [isAuthenticated, token]);
 
-  // 发送消息
+  // 刷新待发送消息队列
+  const flushMessageQueue = useCallback(() => {
+    const queue = messageQueueRef.current;
+    if (queue.length === 0) return;
+    console.log(`[WS] 刷新消息队列，共 ${queue.length} 条待发送`);
+    const toSend = [...queue];
+    messageQueueRef.current = [];
+    for (const item of toSend) {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify(item.msg));
+      } else {
+        // 仍然未连接，放回队列
+        messageQueueRef.current.push(item);
+      }
+    }
+  }, []);
+
+  // 发送消息（带队列支持）
   const send = useCallback((msg: WsMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
+    } else {
+      // 未连接时入队，连接成功后自动发送
+      console.log('[WS] 未连接，消息入队');
+      messageQueueRef.current.push({ msg, timestamp: Date.now() });
     }
   }, []);
 
   const sendMessage = useCallback(
-    (receiverId: string, receiverType: string, content: string, messageType = 'text', metadata?: Record<string, unknown>) => {
+    (receiverId: string, receiverType: string, content: string, messageType = 'text', metadata?: Record<string, unknown>): string => {
       const clientId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       send({
         type: 'send_message',
