@@ -86,7 +86,7 @@ mod tests {
     fn test_token_generate_and_verify() {
         let secret = "test_secret";
         let user_id = "user123";
-        let token = generate_token(user_id, secret).unwrap();
+        let token = generate_token(user_id, "user", secret).unwrap();
         let claims = verify_token(&token, secret).unwrap();
         assert_eq!(claims.sub, user_id);
     }
