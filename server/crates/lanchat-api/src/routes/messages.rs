@@ -8,7 +8,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use lanchat_common::types::ApiResponse;
-use lanchat_common::error::ApiError;
+use lanchat_common::error::{ApiError, AuthError};
 
 use crate::error::AppError;
 use crate::AppState;
@@ -37,6 +37,25 @@ async fn history_handler(
         .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
     let tid = Uuid::parse_str(&target_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的目标ID".to_string())))?;
+
+    // 群组消息需要验证用户是否为群成员
+    if target_type == "group" {
+        let is_member = lanchat_core::services::group::is_member(&state.db, &tid, &uid)
+            .await
+            .unwrap_or(false);
+        if !is_member {
+            // 检查是否为管理员（管理员可查看任何群组）
+            let is_admin = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+                .await
+                .ok()
+                .flatten()
+                .map(|u| u.role == "admin")
+                .unwrap_or(false);
+            if !is_admin {
+                return Err(AppError(ApiError::AuthError(AuthError::Forbidden)));
+            }
+        }
+    }
 
     let limit = query.limit.unwrap_or(50).min(100);
 
