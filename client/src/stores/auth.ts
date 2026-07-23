@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '@/services/api';
+import { useChatStore } from './chat';
 
 export interface User {
   id: string;
@@ -68,6 +69,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        // 清理聊天状态
+        useChatStore.getState().reset();
         set({
           token: null,
           user: null,

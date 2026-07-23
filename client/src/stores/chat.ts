@@ -42,6 +42,7 @@ interface ChatState {
   addConversation: (conversation: Conversation) => void;
   updateConversationName: (id: string, name: string) => void;
   markConversationRead: (userId: string) => void;
+  reset: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -189,6 +190,16 @@ export const useChatStore = create<ChatState>()(
             },
           };
         });
+      },
+
+      reset: () => {
+        set({
+          conversations: [],
+          currentConversation: null,
+          messages: {},
+        });
+        // 清除持久化的聊天存储
+        localStorage.removeItem('chat-storage');
       },
     }),
     {
