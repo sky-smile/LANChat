@@ -78,11 +78,25 @@ async fn main() -> anyhow::Result<()> {
         active_group_calls: Arc::new(RwLock::new(HashMap::new())),
     };
 
-    // CORS 配置
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // CORS 配置：从环境变量读取允许的来源，未设置则允许所有
+    let cors = if let Ok(origins) = std::env::var("CORS_ORIGINS") {
+        let origins: Vec<axum::http::HeaderValue> = origins
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(tower_http::cors::AllowMethods::from(
+                [axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE],
+            ))
+            .allow_headers(Any)
+    } else {
+        // 开发环境：允许所有来源
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
 
     // 构建路由
     // 公开路由（不需要认证）
