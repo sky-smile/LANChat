@@ -43,9 +43,25 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token 过期，清除认证状态
-      localStorage.removeItem('auth-storage');
-      window.location.href = '/login';
+      const errorCode = error.response?.data?.error?.error_code;
+      
+      // 区分处理不同类型的认证错误
+      switch (errorCode) {
+        case 'TOKEN_EXPIRED':
+        case 'UNAUTHORIZED':
+          // Token 过期或未携带 → 清除状态，跳转登录
+          localStorage.removeItem('auth-storage');
+          window.location.href = '/login';
+          break;
+        case 'INVALID_CREDENTIALS':
+          // 密码错误 → 不自动跳转，让调用方处理错误提示
+          break;
+        default:
+          // 其他 401 错误 → 清除状态，跳转登录
+          localStorage.removeItem('auth-storage');
+          window.location.href = '/login';
+          break;
+      }
     }
     return Promise.reject(error);
   },

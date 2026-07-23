@@ -42,7 +42,23 @@ impl IntoResponse for AppError {
                     lanchat_common::error::AuthError::Forbidden => StatusCode::FORBIDDEN,
                     _ => StatusCode::UNAUTHORIZED,
                 };
-                (status, e.to_string())
+                // 为 TokenError 添加子类型，方便客户端区分 token 过期 vs 其他认证错误
+                let error_code = match &e {
+                    lanchat_common::error::AuthError::TokenError(_) => "TOKEN_EXPIRED",
+                    lanchat_common::error::AuthError::InvalidCredentials => "INVALID_CREDENTIALS",
+                    lanchat_common::error::AuthError::Unauthorized => "UNAUTHORIZED",
+                    lanchat_common::error::AuthError::Forbidden => "FORBIDDEN",
+                    lanchat_common::error::AuthError::HashError(_) => "INTERNAL_ERROR",
+                };
+                let body = serde_json::json!({
+                    "success": false,
+                    "error": {
+                        "code": status.as_u16() as i32,
+                        "message": e.to_string(),
+                        "error_code": error_code,
+                    }
+                });
+                return (status, Json(body)).into_response();
             }
             ApiError::InternalError(msg) => {
                 tracing::error!("内部错误: {}", msg);
