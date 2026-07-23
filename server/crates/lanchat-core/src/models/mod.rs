@@ -84,6 +84,6 @@ pub struct File {
     pub file_size: i64,
     pub storage_path: String,
     pub thumbnail_path: Option<String>,
-    pub uploader_id: Uuid,
+    pub uploader_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }

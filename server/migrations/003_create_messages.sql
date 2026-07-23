@@ -1,7 +1,7 @@
 -- 消息表
 CREATE TABLE messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    sender_id UUID REFERENCES users(id),
+    sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
     receiver_id UUID NOT NULL,
     receiver_type VARCHAR(10) NOT NULL,
     content TEXT,

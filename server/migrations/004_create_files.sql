@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS files (
     storage_path VARCHAR(500) NOT NULL,
     -- 缩略图路径（仅图片）
     thumbnail_path VARCHAR(500),
-    -- 上传者
-    uploader_id UUID NOT NULL REFERENCES users(id),
+    -- 上传者（用户删除后置为 NULL）
+    uploader_id UUID REFERENCES users(id) ON DELETE SET NULL,
     -- 创建时间
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

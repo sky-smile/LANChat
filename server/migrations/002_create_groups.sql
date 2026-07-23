@@ -6,7 +6,7 @@ CREATE TABLE groups (
     avatar_url VARCHAR(500),
     group_type VARCHAR(20) DEFAULT 'normal',
     max_members INT DEFAULT 500,
-    created_by UUID REFERENCES users(id),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
