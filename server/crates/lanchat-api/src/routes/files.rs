@@ -19,6 +19,8 @@ use crate::AppState;
 pub fn file_routes() -> Router<AppState> {
     Router::new()
         .route("/upload", post(upload_handler))
+        // 限制上传文件大小为 50MB
+        .layer(axum::extract::DefaultBodyLimit::max(50 * 1024 * 1024))
 }
 
 /// 文件下载路由（公开，UUID 不可猜测）
