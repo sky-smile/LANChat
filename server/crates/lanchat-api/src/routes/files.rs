@@ -102,16 +102,24 @@ async fn upload_handler(
         let src_path = PathBuf::from(&storage_path);
         let dst_path = PathBuf::from(&thumb_full_path);
 
-        // 在后台任务中生成缩略图，不阻塞响应
-        tokio::spawn(async move {
-            if let Err(e) =
-                lanchat_core::services::file::generate_thumbnail(&src_path, &dst_path, 200).await
-            {
-                tracing::warn!("生成缩略图失败: {}", e);
-            }
-        });
+        // 使用 spawn_blocking 同步等待缩略图生成完成（image 库是 CPU 密集型操作）
+        let result = tokio::task::spawn_blocking(move || {
+            lanchat_core::services::file::generate_thumbnail_sync(&src_path, &dst_path, 200)
+        })
+        .await;
 
-        thumbnail_path = Some(format!("{}/{}", thumb_dir, thumb_name));
+        match result {
+            Ok(Ok(())) => {
+                thumbnail_path = Some(format!("{}/{}", thumb_dir, thumb_name));
+            }
+            Ok(Err(e)) => {
+                tracing::warn!("生成缩略图失败: {}", e);
+                // 生成失败时不写入 thumbnail_path
+            }
+            Err(e) => {
+                tracing::warn!("缩略图生成任务失败: {}", e);
+            }
+        }
     }
 
     // 保存到数据库

@@ -37,8 +37,17 @@ pub async fn get_file(pool: &sqlx::PgPool, file_id: &Uuid) -> Result<Option<File
     file_repository::find_by_id(pool, file_id).await
 }
 
-/// 生成缩略图（仅图片）
+/// 生成缩略图（仅图片，异步版本）
 pub async fn generate_thumbnail(
+    image_path: &Path,
+    thumbnail_path: &Path,
+    max_size: u32,
+) -> Result<(), image::ImageError> {
+    generate_thumbnail_sync(image_path, thumbnail_path, max_size)
+}
+
+/// 生成缩略图（仅图片，同步版本，用于 spawn_blocking）
+pub fn generate_thumbnail_sync(
     image_path: &Path,
     thumbnail_path: &Path,
     max_size: u32,
