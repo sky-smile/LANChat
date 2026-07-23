@@ -184,15 +184,18 @@ async fn handle_text_message(state: &AppState, user_id: &str, text: &str) {
         }
         WsMessage::CallOffer(payload) => {
             let receiver_id = payload.receiver_id.clone();
-            handle_call_sdp_forward(state, &receiver_id, WsMessage::CallOffer(payload)).await;
+            let call_id = payload.call_id.clone();
+            handle_call_sdp_forward(state, user_id, &call_id, &receiver_id, WsMessage::CallOffer(payload)).await;
         }
         WsMessage::CallAnswer(payload) => {
             let receiver_id = payload.receiver_id.clone();
-            handle_call_sdp_forward(state, &receiver_id, WsMessage::CallAnswer(payload)).await;
+            let call_id = payload.call_id.clone();
+            handle_call_sdp_forward(state, user_id, &call_id, &receiver_id, WsMessage::CallAnswer(payload)).await;
         }
         WsMessage::CallIce(payload) => {
             let receiver_id = payload.receiver_id.clone();
-            handle_call_ice_forward(state, &receiver_id, payload).await;
+            let call_id = payload.call_id.clone();
+            handle_call_ice_forward(state, user_id, &call_id, &receiver_id, payload).await;
         }
         // ---- 多人通话信令 ----
         WsMessage::GroupCallCreate(payload) => {
@@ -427,92 +430,134 @@ async fn handle_call_invite(state: &AppState, caller_id: &str, payload: CallInvi
 }
 
 /// 处理通话接听：通知呼叫方对方已接听
-async fn handle_call_accept(state: &AppState, _user_id: &str, payload: CallAcceptPayload) {
-    // 查找通话的另一方（呼叫方）
-    let caller_id = {
+async fn handle_call_accept(state: &AppState, user_id: &str, payload: CallAcceptPayload) {
+    // 校验：只有被叫方才能接听
+    let call_info = {
         let calls = state.active_calls.read().await;
-        calls.get(&payload.call_id).map(|c| c.caller_id.clone())
+        calls.get(&payload.call_id).cloned()
     };
 
-    if let Some(caller_id) = caller_id {
-        let conns = state.connections.read().await;
-        // 通知呼叫方：通话已接通
-        if let Some((tx, _)) = conns.get(&caller_id) {
-            let status = WsMessage::CallStatus(CallStatusPayload {
-                call_id: payload.call_id.clone(),
-                status: "connected".to_string(),
-                message: None,
-            });
-            let _ = tx.send(Message::Text(status.to_json().into()));
-        }
-        // 通知接听方：通话已接通
-        if let Some((tx, _)) = conns.get(&payload.user_id) {
-            let status = WsMessage::CallStatus(CallStatusPayload {
-                call_id: payload.call_id.clone(),
-                status: "connected".to_string(),
-                message: None,
-            });
-            let _ = tx.send(Message::Text(status.to_json().into()));
-        }
+    let call_info = match call_info {
+        Some(info) => info,
+        None => return, // 通话不存在
+    };
+
+    if call_info.callee_id != user_id {
+        tracing::warn!("用户 {} 尝试接听非自己的通话 {}", user_id, payload.call_id);
+        return; // 非被叫方，忽略
+    }
+
+    let caller_id = &call_info.caller_id;
+
+    let conns = state.connections.read().await;
+    // 通知呼叫方：通话已接通
+    if let Some((tx, _)) = conns.get(caller_id) {
+        let status = WsMessage::CallStatus(CallStatusPayload {
+            call_id: payload.call_id.clone(),
+            status: "connected".to_string(),
+            message: None,
+        });
+        let _ = tx.send(Message::Text(status.to_json().into()));
+    }
+    // 通知接听方：通话已接通
+    if let Some((tx, _)) = conns.get(user_id) {
+        let status = WsMessage::CallStatus(CallStatusPayload {
+            call_id: payload.call_id.clone(),
+            status: "connected".to_string(),
+            message: None,
+        });
+        let _ = tx.send(Message::Text(status.to_json().into()));
     }
 }
 
 /// 处理通话拒接：通知呼叫方
-async fn handle_call_reject(state: &AppState, _user_id: &str, payload: CallRejectPayload) {
-    // 查找呼叫方（通过 active_calls 映射）
-    let caller_id = {
+async fn handle_call_reject(state: &AppState, user_id: &str, payload: CallRejectPayload) {
+    // 校验：只有被叫方才能拒接
+    let call_info = {
         let calls = state.active_calls.read().await;
-        calls.get(&payload.call_id).map(|c| c.caller_id.clone())
+        calls.get(&payload.call_id).cloned()
     };
 
-    if let Some(caller_id) = caller_id {
-        let conns = state.connections.read().await;
-        if let Some((tx, _)) = conns.get(&caller_id) {
-            let status = WsMessage::CallStatus(CallStatusPayload {
-                call_id: payload.call_id.clone(),
-                status: "rejected".to_string(),
-                message: None,
-            });
-            let _ = tx.send(Message::Text(status.to_json().into()));
-        }
+    let call_info = match call_info {
+        Some(info) => info,
+        None => return, // 通话不存在
+    };
+
+    if call_info.callee_id != user_id {
+        tracing::warn!("用户 {} 尝试拒接非自己的通话 {}", user_id, payload.call_id);
+        return; // 非被叫方，忽略
+    }
+
+    let conns = state.connections.read().await;
+    if let Some((tx, _)) = conns.get(&call_info.caller_id) {
+        let status = WsMessage::CallStatus(CallStatusPayload {
+            call_id: payload.call_id.clone(),
+            status: "rejected".to_string(),
+            message: None,
+        });
+        let _ = tx.send(Message::Text(status.to_json().into()));
     }
 
     // 清理通话记录
+    drop(conns);
     state.active_calls.write().await.remove(&payload.call_id);
 }
 
 /// 处理挂断：通知对方通话结束
 async fn handle_call_hangup(state: &AppState, user_id: &str, payload: CallHangupPayload) {
-    // 查找通话的另一方
-    let other_id = {
+    // 校验：只有通话参与方才能挂断
+    let call_info = {
         let calls = state.active_calls.read().await;
-        calls.get(&payload.call_id).map(|info| {
-            if info.caller_id == user_id {
-                info.callee_id.clone()
-            } else {
-                info.caller_id.clone()
-            }
-        })
+        calls.get(&payload.call_id).cloned()
     };
 
-    if let Some(other_id) = other_id {
-        let conns = state.connections.read().await;
-        if let Some((tx, _)) = conns.get(&other_id) {
-            let status = WsMessage::CallStatus(CallStatusPayload {
-                call_id: payload.call_id.clone(),
-                status: "ended".to_string(),
-                message: None,
-            });
-            let _ = tx.send(Message::Text(status.to_json().into()));
-        }
+    let call_info = match call_info {
+        Some(info) => info,
+        None => return, // 通话不存在
+    };
+
+    if call_info.caller_id != user_id && call_info.callee_id != user_id {
+        tracing::warn!("用户 {} 尝试挂断非参与的通话 {}", user_id, payload.call_id);
+        return; // 非参与方，忽略
+    }
+
+    // 查找通话的另一方
+    let other_id = if call_info.caller_id == user_id {
+        &call_info.callee_id
+    } else {
+        &call_info.caller_id
+    };
+
+    let conns = state.connections.read().await;
+    if let Some((tx, _)) = conns.get(other_id) {
+        let status = WsMessage::CallStatus(CallStatusPayload {
+            call_id: payload.call_id.clone(),
+            status: "ended".to_string(),
+            message: None,
+        });
+        let _ = tx.send(Message::Text(status.to_json().into()));
     }
 
     // 清理通话记录
+    drop(conns);
     state.active_calls.write().await.remove(&payload.call_id);
 }
 
 /// 转发 SDP（Offer/Answer）给对方
-async fn handle_call_sdp_forward(state: &AppState, receiver_id: &str, msg: WsMessage) {
+async fn handle_call_sdp_forward(state: &AppState, user_id: &str, call_id: &str, receiver_id: &str, msg: WsMessage) {
+    // 校验：只有通话参与方才能转发 SDP
+    let call_info = {
+        let calls = state.active_calls.read().await;
+        calls.get(call_id).cloned()
+    };
+
+    if let Some(info) = call_info {
+        if info.caller_id != user_id && info.callee_id != user_id {
+            tracing::warn!("用户 {} 尝试转发非参与通话 {} 的 SDP", user_id, call_id);
+            return; // 非参与方，忽略
+        }
+    }
+
     let conns = state.connections.read().await;
     if let Some((tx, _)) = conns.get(receiver_id) {
         let _ = tx.send(Message::Text(msg.to_json().into()));
@@ -520,7 +565,20 @@ async fn handle_call_sdp_forward(state: &AppState, receiver_id: &str, msg: WsMes
 }
 
 /// 转发 ICE Candidate 给对方
-async fn handle_call_ice_forward(state: &AppState, receiver_id: &str, payload: CallIcePayload) {
+async fn handle_call_ice_forward(state: &AppState, user_id: &str, call_id: &str, receiver_id: &str, payload: CallIcePayload) {
+    // 校验：只有通话参与方才能转发 ICE
+    let call_info = {
+        let calls = state.active_calls.read().await;
+        calls.get(call_id).cloned()
+    };
+
+    if let Some(info) = call_info {
+        if info.caller_id != user_id && info.callee_id != user_id {
+            tracing::warn!("用户 {} 尝试转发非参与通话 {} 的 ICE", user_id, call_id);
+            return; // 非参与方，忽略
+        }
+    }
+
     let conns = state.connections.read().await;
     if let Some((tx, _)) = conns.get(receiver_id) {
         let ice = WsMessage::CallIce(payload);
