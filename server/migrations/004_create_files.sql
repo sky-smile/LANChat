@@ -1,6 +1,6 @@
 -- 文件存储表
 CREATE TABLE IF NOT EXISTS files (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     -- 原始文件名
     original_name VARCHAR(255) NOT NULL,
     -- 存储文件名（UUID + 扩展名）
