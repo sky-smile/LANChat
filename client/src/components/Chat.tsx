@@ -21,6 +21,9 @@ function Chat() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isNearBottomRef = useRef(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const oldestMsgTimeRef = useRef<string | null>(null);
 
   const currentConversation = useChatStore((state) => state.currentConversation);
   const messages = useChatStore((state) =>
@@ -57,13 +60,71 @@ function Chat() {
     }
   };
 
-  // 智能滚动：检测用户是否在底部附近
+  // 智能滚动：检测用户是否在底部附近，以及是否滚动到顶部
   const handleScroll = () => {
     const container = messagesContainerRef.current;
     if (!container) return;
-    const threshold = 100; // 距离底部 100px 以内视为"在底部"
+    const threshold = 100;
     isNearBottomRef.current = 
       container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    
+    // 滚动到顶部时加载更多历史消息
+    if (container.scrollTop < 50 && !loadingMore && hasMore) {
+      loadOlderMessages();
+    }
+  };
+
+  // 加载更早的历史消息
+  const loadOlderMessages = async () => {
+    if (!currentConversation || loadingMore || !hasMore) return;
+    const conv = useChatStore.getState().conversations.find((c) => c.id === currentConversation);
+    if (!conv) return;
+
+    setLoadingMore(true);
+    try {
+      const container = messagesContainerRef.current;
+      const prevScrollHeight = container?.scrollHeight || 0;
+
+      const resp = await api.get(`/messages/history/${currentConversation}/${conv.type}`, {
+        params: { limit: 50, before: oldestMsgTimeRef.current },
+      });
+      const history = resp.data.data;
+      if (history && Array.isArray(history) && history.length > 0) {
+        const mapped = history.reverse().map((msg: Record<string, unknown>) => ({
+          id: msg.id as string,
+          senderId: msg.sender_id as string,
+          senderName: (msg.sender_display_name as string) || (msg.sender_name as string) || undefined,
+          receiverId: msg.receiver_id as string,
+          receiverType: msg.receiver_type as 'user' | 'group',
+          content: (msg.content as string) || '',
+          messageType: msg.message_type as 'text' | 'image' | 'file' | 'system',
+          metadata: msg.metadata as Record<string, unknown> | undefined,
+          isRead: msg.is_read as boolean,
+          createdAt: msg.created_at as string,
+        }));
+        
+        oldestMsgTimeRef.current = mapped[0].createdAt;
+        useChatStore.getState().prependMessages(currentConversation, mapped);
+        
+        // 保持滚动位置不变
+        if (container) {
+          requestAnimationFrame(() => {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - prevScrollHeight;
+          });
+        }
+        
+        if (history.length < 50) {
+          setHasMore(false);
+        }
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('加载更多历史消息失败', err);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   // 自动滚动：仅当用户在底部时滚动
@@ -85,6 +146,10 @@ function Chat() {
     const conv = useChatStore.getState().conversations.find((c) => c.id === currentConversation);
     if (!conv) return;
 
+    // 重置分页状态
+    setHasMore(true);
+    oldestMsgTimeRef.current = null;
+
     const loadHistory = async () => {
       try {
         const resp = await api.get(`/messages/history/${currentConversation}/${conv.type}`, {
@@ -92,21 +157,27 @@ function Chat() {
         });
         const history = resp.data.data;
         if (history && Array.isArray(history)) {
-          useChatStore.getState().setMessages(
-            currentConversation,
-            history.reverse().map((msg: Record<string, unknown>) => ({
-              id: msg.id as string,
-              senderId: msg.sender_id as string,
-              senderName: (msg.sender_display_name as string) || (msg.sender_name as string) || undefined,
-              receiverId: msg.receiver_id as string,
-              receiverType: msg.receiver_type as 'user' | 'group',
-              content: (msg.content as string) || '',
-              messageType: msg.message_type as 'text' | 'image' | 'file' | 'system',
-              metadata: msg.metadata as Record<string, unknown> | undefined,
-              isRead: msg.is_read as boolean,
-              createdAt: msg.created_at as string,
-            })),
-          );
+          const mapped = history.reverse().map((msg: Record<string, unknown>) => ({
+            id: msg.id as string,
+            senderId: msg.sender_id as string,
+            senderName: (msg.sender_display_name as string) || (msg.sender_name as string) || undefined,
+            receiverId: msg.receiver_id as string,
+            receiverType: msg.receiver_type as 'user' | 'group',
+            content: (msg.content as string) || '',
+            messageType: msg.message_type as 'text' | 'image' | 'file' | 'system',
+            metadata: msg.metadata as Record<string, unknown> | undefined,
+            isRead: msg.is_read as boolean,
+            createdAt: msg.created_at as string,
+          }));
+          useChatStore.getState().setMessages(currentConversation, mapped);
+          
+          // 记录最早消息时间，用于分页
+          if (mapped.length > 0) {
+            oldestMsgTimeRef.current = mapped[0].createdAt;
+          }
+          if (history.length < 50) {
+            setHasMore(false);
+          }
         }
       } catch (err) {
         console.error('加载历史消息失败', err);
@@ -468,6 +539,16 @@ function Chat() {
 
       {/* 消息列表 */}
       <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
+        {loadingMore && (
+          <div style={{ textAlign: 'center', padding: '8px', color: '#999', fontSize: '12px' }}>
+            加载更多消息...
+          </div>
+        )}
+        {!hasMore && messages.length > 0 && (
+          <div style={{ textAlign: 'center', padding: '8px', color: '#999', fontSize: '12px' }}>
+            没有更多消息了
+          </div>
+        )}
         {messages.map((msg, idx) => {
           const isOwn = msg.senderId === currentUserId;
           const prevMsg = idx > 0 ? messages[idx - 1] : undefined;

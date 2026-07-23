@@ -35,6 +35,7 @@ interface ChatState {
   setCurrentConversation: (id: string | null) => void;
   addMessage: (conversationId: string, message: Message) => void;
   setMessages: (conversationId: string, messages: Message[]) => void;
+  prependMessages: (conversationId: string, olderMessages: Message[]) => void;
   markAsRead: (conversationId: string) => void;
   updateMessageAck: (clientId: string, serverMsgId: string, createdAt: string) => void;
   updateContactStatus: (userId: string, status: string) => void;
@@ -106,6 +107,15 @@ export const useChatStore = create<ChatState>()(
           messages: {
             ...state.messages,
             [conversationId]: messages,
+          },
+        }));
+      },
+
+      prependMessages: (conversationId, olderMessages) => {
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [conversationId]: [...olderMessages, ...(state.messages[conversationId] || [])],
           },
         }));
       },
