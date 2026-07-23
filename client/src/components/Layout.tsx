@@ -8,7 +8,7 @@ import Groups from './Groups';
 import Settings from './Settings';
 import Admin from './Admin';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { useWebRTC } from '@/hooks/useWebRTC';
+import { useWebRTC, WebRTCContext } from '@/hooks/useWebRTC';
 import { useAuthStore } from '@/stores/auth';
 import { useNavStore, type PanelType } from '@/stores/nav';
 import './Layout.css';
@@ -39,7 +39,7 @@ function Layout() {
   useWebSocket(wsRef);
 
   // 初始化 WebRTC（内部自动注册信令处理器到 callSignalingBus）
-  const { acceptCall, rejectCall, hangup, toggleMute } = useWebRTC(wsRef);
+  const { capabilities, acceptCall, rejectCall, hangup, toggleMute } = useWebRTC(wsRef);
 
   // 获取当前激活的中间面板
   const activePanel = useNavStore((state) => state.activePanel);
@@ -49,31 +49,33 @@ function Layout() {
   const hideChatPanel = activePanel === 'settings' || activePanel === 'admin';
 
   return (
-    <div className="app-layout-3col">
-      {/* 左列：导航栏 */}
-      <NavRail />
+    <WebRTCContext.Provider value={capabilities}>
+      <div className="app-layout-3col">
+        {/* 左列：导航栏 */}
+        <NavRail />
 
-      {/* 中间列：列表面板 */}
-      <div className={`middle-panel ${hideChatPanel ? 'middle-panel-expanded' : ''}`}>
-        <MiddleContent />
-      </div>
-
-      {/* 右列：聊天窗口（设置和管理时隐藏） */}
-      {!hideChatPanel && (
-        <div className="right-panel">
-          <Chat />
+        {/* 中间列：列表面板 */}
+        <div className={`middle-panel ${hideChatPanel ? 'middle-panel-expanded' : ''}`}>
+          <MiddleContent />
         </div>
-      )}
 
-      {/* 语音通话 UI 悬浮条 */}
-      <VoiceCall
-        onAccept={acceptCall}
-        onReject={rejectCall}
-        onHangup={hangup}
-        onToggleMute={toggleMute}
-        expanded={hideChatPanel}
-      />
-    </div>
+        {/* 右列：聊天窗口（设置和管理时隐藏） */}
+        {!hideChatPanel && (
+          <div className="right-panel">
+            <Chat />
+          </div>
+        )}
+
+        {/* 语音通话 UI 悬浮条 */}
+        <VoiceCall
+          onAccept={acceptCall}
+          onReject={rejectCall}
+          onHangup={hangup}
+          onToggleMute={toggleMute}
+          expanded={hideChatPanel}
+        />
+      </div>
+    </WebRTCContext.Provider>
   );
 }
 

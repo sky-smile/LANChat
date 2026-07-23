@@ -4,7 +4,7 @@ import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, PhoneOutli
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { getInitiateCall, getCreateGroupCall } from '@/hooks/useWebRTC';
+import { useWebRTCCapabilities } from '@/hooks/useWebRTC';
 import api from '@/services/api';
 import { getFileUrl } from '@/utils/format';
 import GroupSettings from './GroupSettings';
@@ -34,30 +34,21 @@ function Chat() {
   const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
   const [isGroupMember, setIsGroupMember] = useState<boolean | null>(null);
   const { sendMessage, sendMarkRead } = useWebSocket();
+  const webRTC = useWebRTCCapabilities();
 
   const currentConv = conversations.find((c) => c.id === currentConversation);
   const isGroup = currentConv?.type === 'group';
 
   // 发起语音通话
   const handleVoiceCall = () => {
-    if (!currentConversation || !currentConv) return;
+    if (!currentConversation || !currentConv || !webRTC) return;
 
     if (currentConv.type === 'group') {
       // 群组通话
-      const createGroup = getCreateGroupCall();
-      if (createGroup) {
-        createGroup(currentConversation, currentConv.name);
-      } else {
-        antMessage.warning('通话功能未就绪，请稍后重试');
-      }
+      webRTC.createGroupCall(currentConversation, currentConv.name);
     } else {
       // 单人通话
-      const initiate = getInitiateCall();
-      if (initiate) {
-        initiate(currentConversation, currentConv.name);
-      } else {
-        antMessage.warning('通话功能未就绪，请稍后重试');
-      }
+      webRTC.initiateCall(currentConversation, currentConv.name);
     }
   };
 

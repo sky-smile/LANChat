@@ -1,8 +1,28 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, createContext, useContext } from 'react';
 import { useCallStore, type GroupCallParticipant } from '@/stores/call';
 import { useAuthStore } from '@/stores/auth';
 import { setCallSignalingHandler } from './callSignalingBus';
 import { playRingSound, stopRingSound } from '@/utils/notification';
+
+/** WebRTC 通话能力接口 */
+export interface WebRTCCapabilities {
+  initiateCall: (peerId: string, peerName: string) => Promise<void>;
+  createGroupCall: (groupId: string, groupName: string) => Promise<void>;
+  joinGroupCall: (callId: string, groupId: string, groupName: string) => Promise<void>;
+  acceptCall: () => Promise<void>;
+  rejectCall: () => void;
+  hangup: () => void;
+  toggleMute: () => void;
+}
+
+const WebRTCContext = createContext<WebRTCCapabilities | null>(null);
+
+/** 获取 WebRTC 通话能力（需在 WebRTCProvider 内使用） */
+export function useWebRTCCapabilities(): WebRTCCapabilities | null {
+  return useContext(WebRTCContext);
+}
+
+export { WebRTCContext };
 
 /** WebRTC 配置 */
 const RTC_CONFIG: RTCConfiguration = {
@@ -17,28 +37,6 @@ const RTC_CONFIG: RTCConfiguration = {
     }] : []),
   ],
 };
-
-/** 模块级引用：供外部组件调用发起通话 */
-let _initiateCallRef: ((peerId: string, peerName: string) => Promise<void>) | null = null;
-/** 模块级引用：供外部组件调用创建群组通话 */
-let _createGroupCallRef: ((groupId: string, groupName: string) => Promise<void>) | null = null;
-/** 模块级引用：供外部组件调用加入群组通话 */
-let _joinGroupCallRef: ((callId: string, groupId: string, groupName: string) => Promise<void>) | null = null;
-
-/** 获取发起通话函数（供 Chat 等组件调用） */
-export function getInitiateCall() {
-  return _initiateCallRef;
-}
-
-/** 获取创建群组通话函数 */
-export function getCreateGroupCall() {
-  return _createGroupCallRef;
-}
-
-/** 获取加入群组通话函数 */
-export function getJoinGroupCall() {
-  return _joinGroupCallRef;
-}
 
 /**
  * WebRTC 语音通话 Hook
@@ -663,18 +661,6 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     }
   }, [wsSend, cleanupAndEnd, cleanupGroupCall, updateParticipants, connectToNewParticipant, createGroupPeerConnection, setStatus]);
 
-  // 注册函数到模块级引用
-  useEffect(() => {
-    _initiateCallRef = initiateCall;
-    _createGroupCallRef = createGroupCall;
-    _joinGroupCallRef = joinGroupCall;
-    return () => {
-      _initiateCallRef = null;
-      _createGroupCallRef = null;
-      _joinGroupCallRef = null;
-    };
-  }, [initiateCall, createGroupCall, joinGroupCall]);
-
   // 注册 handleSignaling 到信令总线
   useEffect(() => {
     setCallSignalingHandler(handleSignaling);
@@ -705,7 +691,7 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     };
   }, [cleanupAndEnd]);
 
-  return {
+  const capabilities: WebRTCCapabilities = {
     initiateCall,
     createGroupCall,
     joinGroupCall,
@@ -713,6 +699,13 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     rejectCall,
     hangup,
     toggleMute,
-    audioContainerRef,
+  };
+
+  return {
+    capabilities,
+    acceptCall,
+    rejectCall,
+    hangup,
+    toggleMute,
   };
 }
