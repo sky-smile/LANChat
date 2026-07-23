@@ -52,6 +52,8 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
   // 多人通话 PeerConnection 映射：user_id -> RTCPeerConnection
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
+  // 远端音频容器（由 React 渲染管理，音频元素挂载于此）
+  const audioContainerRef = useRef<HTMLDivElement | null>(null);
   // 远端音频元素映射：user_id -> HTMLAudioElement
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
@@ -89,10 +91,23 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     if (!audio) {
       audio = new Audio();
       audio.autoplay = true;
-      document.body.appendChild(audio);
+      // 挂载到 React 管理的容器中，而非直接操作 document.body
+      const container = audioContainerRef.current || document.body;
+      container.appendChild(audio);
       remoteAudiosRef.current.set(peerId, audio);
     }
     audio.srcObject = stream;
+  }, []);
+
+  /** 清理单个远端音频元素 */
+  const cleanupPeerAudio = useCallback((peerId: string) => {
+    const audio = remoteAudiosRef.current.get(peerId);
+    if (audio) {
+      audio.pause();
+      audio.srcObject = null;
+      audio.remove();
+      remoteAudiosRef.current.delete(peerId);
+    }
   }, []);
 
   /** 清理所有远端音频元素 */
@@ -204,6 +219,11 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
 
     pc.onconnectionstatechange = () => {
       console.log(`[WebRTC] 群组连接状态 (${peerId}):`, pc.connectionState);
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        // 清理该 peer 的音频元素和 PeerConnection
+        cleanupPeerAudio(peerId);
+        pcsRef.current.delete(peerId);
+      }
     };
 
     // 添加本地音频轨道
@@ -215,7 +235,7 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
 
     pcsRef.current.set(peerId, pc);
     return pc;
-  }, [wsSend, playRemoteAudio]);
+  }, [wsSend, playRemoteAudio, cleanupPeerAudio]);
 
   /** 发起单人通话 */
   const initiateCall = useCallback(async (targetPeerId: string, targetPeerName: string) => {
@@ -663,6 +683,21 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     };
   }, [handleSignaling]);
 
+  // 初始化远端音频容器
+  useEffect(() => {
+    const container = document.createElement('div');
+    container.style.display = 'none';
+    container.setAttribute('data-lanchat-audio-container', '');
+    document.body.appendChild(container);
+    audioContainerRef.current = container;
+    return () => {
+      // 清理所有音频后移除容器
+      cleanupAllRemoteAudio();
+      container.remove();
+      audioContainerRef.current = null;
+    };
+  }, [cleanupAllRemoteAudio]);
+
   // 组件卸载时清理
   useEffect(() => {
     return () => {
@@ -678,5 +713,6 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     rejectCall,
     hangup,
     toggleMute,
+    audioContainerRef,
   };
 }
