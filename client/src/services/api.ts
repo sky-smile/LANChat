@@ -1,7 +1,14 @@
 import axios from 'axios';
 
+// 生产环境使用 VITE_API_URL 环境变量，开发环境使用代理
+const baseURL = import.meta.env.DEV 
+  ? '/api' 
+  : (import.meta.env.VITE_API_URL 
+    ? `${import.meta.env.VITE_API_URL}/api` 
+    : '/api');
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

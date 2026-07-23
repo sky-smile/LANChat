@@ -267,7 +267,12 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
 
       // 直接连接后端（WebSocket 不受 CORS 限制，避免 Vite 代理问题）
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = import.meta.env.DEV ? '127.0.0.1:3000' : window.location.host;
+      // 生产环境使用 VITE_API_URL 环境变量，开发环境直连后端
+      const wsHost = import.meta.env.DEV 
+        ? '127.0.0.1:3000' 
+        : (import.meta.env.VITE_API_URL 
+          ? new URL(import.meta.env.VITE_API_URL).host 
+          : window.location.host);
       const wsUrl = `${wsProtocol}//${wsHost}/api/ws`;
       console.log('[WS] 连接中...', wsUrl);
 
