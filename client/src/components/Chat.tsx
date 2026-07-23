@@ -18,7 +18,9 @@ function Chat() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isNearBottomRef = useRef(true);
 
   const currentConversation = useChatStore((state) => state.currentConversation);
   const messages = useChatStore((state) =>
@@ -55,10 +57,27 @@ function Chat() {
     }
   };
 
-  // 自动滚动到底部
+  // 智能滚动：检测用户是否在底部附近
+  const handleScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const threshold = 100; // 距离底部 100px 以内视为"在底部"
+    isNearBottomRef.current = 
+      container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+  };
+
+  // 自动滚动：仅当用户在底部时滚动
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
+
+  // 切换会话时滚动到底部
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView();
+    isNearBottomRef.current = true;
+  }, [currentConversation]);
 
   // 加载历史消息
   useEffect(() => {
@@ -197,6 +216,9 @@ function Chat() {
     });
 
     setInputValue('');
+    // 发送后总是滚动到底部
+    isNearBottomRef.current = true;
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -445,7 +467,7 @@ function Chat() {
       </div>
 
       {/* 消息列表 */}
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         {messages.map((msg, idx) => {
           const isOwn = msg.senderId === currentUserId;
           const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
