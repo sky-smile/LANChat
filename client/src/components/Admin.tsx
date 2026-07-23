@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Layout,
   Table,
   Button,
   Input,
@@ -24,8 +23,6 @@ import {
 } from '@ant-design/icons';
 import api from '@/services/api';
 import './Admin.css';
-
-const { Content } = Layout;
 
 interface AdminUser {
   id: string;
@@ -269,7 +266,7 @@ function Admin() {
   ];
 
   return (
-    <Content className="admin-page">
+    <div className="admin-page">
       <div className="admin-header">
         <h2><TeamOutlined /> 用户管理</h2>
         <Space>
@@ -385,7 +382,7 @@ function Admin() {
           </Form.Item>
         </Form>
       </Modal>
-    </Content>
+    </div>
   );
 }
 

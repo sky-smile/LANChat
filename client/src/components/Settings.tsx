@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Layout, Form, Input, Button, Avatar, message, Card, Switch, Tag, Descriptions, Typography } from 'antd';
+import { Form, Input, Button, Avatar, message, Card, Switch, Tag, Descriptions, Typography } from 'antd';
 import { UserOutlined, SaveOutlined, BellOutlined, ApiOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 import { useAuthStore } from '@/stores/auth';
 import api from '@/services/api';
 import './Settings.css';
-
-const { Content } = Layout;
 
 function Settings() {
   const { user, setUser } = useAuthStore();
@@ -55,7 +53,7 @@ function Settings() {
   };
 
   return (
-    <Content className="settings-page">
+    <div className="settings-page">
       <div className="settings-header">
         <h2>设置</h2>
       </div>
@@ -113,7 +111,7 @@ function Settings() {
           </div>
         </Card>
       </div>
-    </Content>
+    </div>
   );
 }
 

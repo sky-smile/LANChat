@@ -3,7 +3,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::Message;
+use crate::models::{Message, MessageWithSender};
 
 /// 保存消息到数据库
 pub async fn create_message(
@@ -30,25 +30,28 @@ pub async fn create_message(
     .await
 }
 
-/// 获取与某用户的历史消息（一对一）
+/// 获取与某用户的历史消息（一对一，带发送者信息）
 pub async fn get_messages_between_users(
     pool: &PgPool,
     user1_id: &Uuid,
     user2_id: &Uuid,
     limit: i64,
     before: Option<&str>,
-) -> Result<Vec<Message>, sqlx::Error> {
+) -> Result<Vec<MessageWithSender>, sqlx::Error> {
     if let Some(before_ts) = before {
-        sqlx::query_as::<_, Message>(
-            "SELECT id, sender_id, receiver_id, receiver_type, content, message_type, metadata, is_read, created_at
-             FROM messages
-             WHERE receiver_type = 'user'
+        sqlx::query_as::<_, MessageWithSender>(
+            "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
+                    m.metadata, m.is_read, m.created_at,
+                    u.username AS sender_name, u.display_name AS sender_display_name
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             WHERE m.receiver_type = 'user'
                AND (
-                 (sender_id = $1 AND receiver_id = $2)
-                 OR (sender_id = $2 AND receiver_id = $1)
+                 (m.sender_id = $1 AND m.receiver_id = $2)
+                 OR (m.sender_id = $2 AND m.receiver_id = $1)
                )
-               AND created_at < $4
-             ORDER BY created_at DESC
+               AND m.created_at < $4
+             ORDER BY m.created_at DESC
              LIMIT $3",
         )
         .bind(user1_id)
@@ -58,15 +61,18 @@ pub async fn get_messages_between_users(
         .fetch_all(pool)
         .await
     } else {
-        sqlx::query_as::<_, Message>(
-            "SELECT id, sender_id, receiver_id, receiver_type, content, message_type, metadata, is_read, created_at
-             FROM messages
-             WHERE receiver_type = 'user'
+        sqlx::query_as::<_, MessageWithSender>(
+            "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
+                    m.metadata, m.is_read, m.created_at,
+                    u.username AS sender_name, u.display_name AS sender_display_name
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             WHERE m.receiver_type = 'user'
                AND (
-                 (sender_id = $1 AND receiver_id = $2)
-                 OR (sender_id = $2 AND receiver_id = $1)
+                 (m.sender_id = $1 AND m.receiver_id = $2)
+                 OR (m.sender_id = $2 AND m.receiver_id = $1)
                )
-             ORDER BY created_at DESC
+             ORDER BY m.created_at DESC
              LIMIT $3",
         )
         .bind(user1_id)
@@ -77,20 +83,23 @@ pub async fn get_messages_between_users(
     }
 }
 
-/// 获取群组的历史消息
+/// 获取群组的历史消息（带发送者信息）
 pub async fn get_group_messages(
     pool: &PgPool,
     group_id: &Uuid,
     limit: i64,
     before: Option<&str>,
-) -> Result<Vec<Message>, sqlx::Error> {
+) -> Result<Vec<MessageWithSender>, sqlx::Error> {
     if let Some(before_ts) = before {
-        sqlx::query_as::<_, Message>(
-            "SELECT id, sender_id, receiver_id, receiver_type, content, message_type, metadata, is_read, created_at
-             FROM messages
-             WHERE receiver_id = $1 AND receiver_type = 'group'
-               AND created_at < $3
-             ORDER BY created_at DESC
+        sqlx::query_as::<_, MessageWithSender>(
+            "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
+                    m.metadata, m.is_read, m.created_at,
+                    u.username AS sender_name, u.display_name AS sender_display_name
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             WHERE m.receiver_id = $1 AND m.receiver_type = 'group'
+               AND m.created_at < $3
+             ORDER BY m.created_at DESC
              LIMIT $2",
         )
         .bind(group_id)
@@ -99,11 +108,14 @@ pub async fn get_group_messages(
         .fetch_all(pool)
         .await
     } else {
-        sqlx::query_as::<_, Message>(
-            "SELECT id, sender_id, receiver_id, receiver_type, content, message_type, metadata, is_read, created_at
-             FROM messages
-             WHERE receiver_id = $1 AND receiver_type = 'group'
-             ORDER BY created_at DESC
+        sqlx::query_as::<_, MessageWithSender>(
+            "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
+                    m.metadata, m.is_read, m.created_at,
+                    u.username AS sender_name, u.display_name AS sender_display_name
+             FROM messages m
+             JOIN users u ON u.id = m.sender_id
+             WHERE m.receiver_id = $1 AND m.receiver_type = 'group'
+             ORDER BY m.created_at DESC
              LIMIT $2",
         )
         .bind(group_id)

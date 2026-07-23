@@ -221,6 +221,26 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
         Err(_) => return,
     };
 
+    // 群组消息需要验证发送者是否为群成员
+    if payload.receiver_type == "group" {
+        let is_member = lanchat_core::services::group::is_member(&state.db, &receiver_uuid, &sender_uuid)
+            .await
+            .unwrap_or(false);
+        if !is_member {
+            tracing::warn!("用户 {} 尝试向非成员群组 {} 发送消息", sender_id, payload.receiver_id);
+            // 发送错误通知给发送者
+            let conns = state.connections.read().await;
+            if let Some(tx) = conns.get(sender_id) {
+                let err_msg = serde_json::json!({
+                    "type": "error",
+                    "payload": { "message": "您不是该群组的成员，无法发送消息" }
+                });
+                let _ = tx.send(Message::Text(err_msg.to_string().into()));
+            }
+            return;
+        }
+    }
+
     // 保存消息到数据库
     let message = match lanchat_core::services::message::send_message(
         &state.db,

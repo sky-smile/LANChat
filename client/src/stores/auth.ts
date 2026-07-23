@@ -24,7 +24,16 @@ interface AuthState {
 
 interface LoginResponse {
   token: string;
-  user: User;
+  // 服务器返回 snake_case 字段
+  user: {
+    id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url?: string;
+    department?: string;
+    role: string;
+    status: string;
+  };
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -40,9 +49,17 @@ export const useAuthStore = create<AuthState>()(
           password,
         });
 
-        const { token, user } = response.data.data;
-        // 登录成功后立即标记为在线（不等待 WebSocket 确认）
-        user.status = 'online';
+        const { token, user: raw } = response.data.data;
+        // 服务器返回 snake_case，转换为 camelCase
+        const user: User = {
+          id: raw.id,
+          username: raw.username,
+          displayName: raw.display_name || '',
+          avatarUrl: raw.avatar_url,
+          department: raw.department,
+          role: raw.role,
+          status: 'online',
+        };
         set({
           token,
           user,

@@ -26,15 +26,6 @@ pub async fn create_group(
     .fetch_one(&mut *tx)
     .await?;
 
-    // 把创建者加为群主
-    sqlx::query(
-        "INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'owner')",
-    )
-    .bind(group.id)
-    .bind(created_by)
-    .execute(&mut *tx)
-    .await?;
-
     tx.commit().await?;
 
     Ok(group)
@@ -49,6 +40,51 @@ pub async fn find_by_id(pool: &PgPool, id: &Uuid) -> Result<Option<Group>, sqlx:
     .bind(id)
     .fetch_optional(pool)
     .await
+}
+
+/// 更新群组信息
+pub async fn update_group(
+    pool: &PgPool,
+    group_id: &Uuid,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<Group, sqlx::Error> {
+    // 构建动态 UPDATE 语句
+    let mut sets = Vec::new();
+    let mut idx = 1;
+
+    if name.is_some() {
+        sets.push(format!("name = ${}", idx));
+        idx += 1;
+    }
+    if description.is_some() {
+        sets.push(format!("description = ${}", idx));
+        idx += 1;
+    }
+
+    if sets.is_empty() {
+        // 没有需要更新的字段，直接返回现有群组
+        return find_by_id(pool, group_id)
+            .await?
+            .ok_or_else(|| sqlx::Error::RowNotFound);
+    }
+
+    let sql = format!(
+        "UPDATE groups SET {} WHERE id = ${} RETURNING id, name, description, avatar_url, group_type, max_members, created_by, created_at",
+        sets.join(", "),
+        idx
+    );
+
+    let mut query = sqlx::query_as::<_, Group>(&sql);
+    if let Some(n) = name {
+        query = query.bind(n);
+    }
+    if let Some(d) = description {
+        query = query.bind(d);
+    }
+    query = query.bind(group_id);
+
+    query.fetch_one(pool).await
 }
 
 /// 添加群组成员
@@ -163,6 +199,19 @@ pub async fn get_user_groups(
     .await
 }
 
+/// 获取所有群组（管理员专用）
+pub async fn get_all_groups(
+    pool: &PgPool,
+) -> Result<Vec<Group>, sqlx::Error> {
+    sqlx::query_as::<_, Group>(
+        "SELECT id, name, description, avatar_url, group_type, max_members, created_by, created_at \
+         FROM groups \
+         ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await
+}
+
 /// 检查用户是否是群组成员
 pub async fn is_member(
     pool: &PgPool,
@@ -179,6 +228,20 @@ pub async fn is_member(
     Ok(exists)
 }
 
+/// 获取群组成员数量
+pub async fn get_member_count(
+    pool: &PgPool,
+    group_id: &Uuid,
+) -> Result<i64, sqlx::Error> {
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM group_members WHERE group_id = $1",
+    )
+    .bind(group_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
 /// 删除群组（仅创建者可操作）
 pub async fn delete_group(
     pool: &PgPool,
@@ -190,6 +253,20 @@ pub async fn delete_group(
     )
     .bind(group_id)
     .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// 强制删除群组（管理员专用，无需创建者验证）
+pub async fn force_delete_group(
+    pool: &PgPool,
+    group_id: &Uuid,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "DELETE FROM groups WHERE id = $1",
+    )
+    .bind(group_id)
     .execute(pool)
     .await?;
     Ok(result.rows_affected() > 0)

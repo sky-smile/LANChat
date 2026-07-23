@@ -1,0 +1,165 @@
+.nav-rail {
+  width: 72px;
+  min-width: 72px;
+  background: #001529;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* 用户信息区域 */
+.nav-rail-user {
+  padding: 8px 0 12px;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.nav-rail-user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 6px 4px;
+  border-radius: 8px;
+  transition: background 0.2s;
+  width: 100%;
+}
+
+.nav-rail-user-info:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-rail-avatar-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.nav-rail-avatar {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  transition: border-color 0.2s;
+}
+
+.nav-rail-user-info:hover .nav-rail-avatar {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.nav-rail-status-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #001529;
+}
+
+.nav-rail-status-dot.online {
+  background: #52c41a;
+}
+
+.nav-rail-status-dot.offline {
+  background: #999;
+}
+
+.nav-rail-status-dot.away,
+.nav-rail-status-dot.busy {
+  background: #faad14;
+}
+
+.nav-rail-username {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* 导航按钮区域 */
+.nav-rail-items {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 0 8px;
+  overflow-y: auto;
+}
+
+.nav-rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: rgba(255, 255, 255, 0.65);
+  position: relative;
+}
+
+.nav-rail-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nav-rail-item.active {
+  background: rgba(24, 144, 255, 0.25);
+  color: #fff;
+}
+
+.nav-rail-item.active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: #1890ff;
+  border-radius: 0 2px 2px 0;
+}
+
+.nav-rail-icon {
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-rail-label {
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* 底部区域 */
+.nav-rail-footer {
+  padding: 8px;
+  width: 100%;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: auto;
+}
+
+/* Badge 样式覆盖 */
+.nav-rail-item .ant-badge {
+  line-height: 1;
+}
+
+.nav-rail-item .ant-badge .ant-badge-count {
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 4px;
+}

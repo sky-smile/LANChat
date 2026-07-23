@@ -214,7 +214,8 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
   const initiateCall = useCallback(async (targetPeerId: string, targetPeerName: string) => {
     const cid = `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const userId = useAuthStore.getState().user?.id || '';
-    const userName = useAuthStore.getState().user?.displayName || '';
+    const currentUser = useAuthStore.getState().user;
+    const userName = currentUser?.displayName || currentUser?.username || '';
 
     console.log('[WebRTC] 发起通话:', cid, '目标:', targetPeerId);
     useCallStore.getState().startCall(cid, targetPeerId, targetPeerName);

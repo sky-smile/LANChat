@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { Input, Button, Avatar, Typography, Progress, message as antMessage, Dropdown } from 'antd';
-import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, PhoneOutlined, TeamOutlined, CopyOutlined, SearchOutlined, ContactsOutlined, CommentOutlined } from '@ant-design/icons';
+import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, PhoneOutlined, TeamOutlined, CopyOutlined, SearchOutlined, ContactsOutlined, CommentOutlined, SettingOutlined } from '@ant-design/icons';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { getInitiateCall, getCreateGroupCall } from '@/hooks/useWebRTC';
 import api from '@/services/api';
+import GroupSettings from './GroupSettings';
 import './Chat.css';
 
 const { Text } = Typography;
@@ -14,6 +15,7 @@ function Chat() {
   const [inputValue, setInputValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,6 +25,8 @@ function Chat() {
   );
   const conversations = useChatStore((state) => state.conversations);
   const currentUserId = useAuthStore((state) => state.user?.id);
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
+  const [isGroupMember, setIsGroupMember] = useState<boolean | null>(null);
   const { sendMessage, sendMarkRead } = useWebSocket();
 
   const currentConv = conversations.find((c) => c.id === currentConversation);
@@ -73,7 +77,7 @@ function Chat() {
             history.reverse().map((msg: Record<string, unknown>) => ({
               id: msg.id as string,
               senderId: msg.sender_id as string,
-              senderName: msg.sender_name as string | undefined,
+              senderName: (msg.sender_display_name as string) || (msg.sender_name as string) || undefined,
               receiverId: msg.receiver_id as string,
               receiverType: msg.receiver_type as 'user' | 'group',
               content: (msg.content as string) || '',
@@ -89,8 +93,57 @@ function Chat() {
       }
     };
 
+    // 如果是群组会话且名称为占位符，获取群组真实名称
+    const fetchGroupInfo = async () => {
+      if (conv.type === 'group' && (conv.name === '加载中...' || conv.name.length === 36)) {
+        try {
+          const resp = await api.get(`/groups/${currentConversation}`);
+          const group = resp.data.data;
+          if (group?.name) {
+            useChatStore.getState().updateConversationName(currentConversation, group.name);
+            if (group.member_count) {
+              // 更新成员数量
+              const store = useChatStore.getState();
+              const updated = store.conversations.map((c) =>
+                c.id === currentConversation
+                  ? { ...c, groupMemberCount: group.member_count }
+                  : c,
+              );
+              useChatStore.setState({ conversations: updated });
+            }
+          }
+        } catch (err) {
+          console.error('获取群组信息失败', err);
+        }
+      }
+    };
+
     loadHistory();
+    fetchGroupInfo();
   }, [currentConversation]);
+
+  // 检查管理员是否为当前群组成员
+  useEffect(() => {
+    if (!currentConversation) {
+      setIsGroupMember(null);
+      return;
+    }
+    const conv = useChatStore.getState().conversations.find((c) => c.id === currentConversation);
+    if (!conv || conv.type !== 'group') {
+      setIsGroupMember(null);
+      return;
+    }
+    if (!isAdmin) {
+      setIsGroupMember(true);
+      return;
+    }
+    // 管理员检查是否为群成员
+    api.get(`/groups/${currentConversation}/members`).then((resp) => {
+      const members = resp.data.data || [];
+      const found = members.some((m: Record<string, unknown>) => m.id === currentUserId);
+      setIsGroupMember(found);
+    }).catch(() => setIsGroupMember(true));
+  }, [currentConversation, isAdmin, currentUserId]);
 
   // 打开对话时发送已读回执，以及页面重新可见时刷新已读状态
   useEffect(() => {
@@ -123,6 +176,8 @@ function Chat() {
   const handleSend = () => {
     const text = inputValue.trim();
     if (!text || !currentConversation || !currentConv) return;
+    // 管理员非群成员禁止发送
+    if (isGroup && isAdmin && isGroupMember === false) return;
 
     const receiverType = currentConv.type;
     const clientId = sendMessage(currentConversation, receiverType, text);
@@ -375,6 +430,15 @@ function Chat() {
           onClick={handleVoiceCall}
           title={isGroup ? '群组语音通话' : '语音通话'}
         />
+        {isGroup && isAdmin && (
+          <Button
+            type="text"
+            icon={<SettingOutlined />}
+            className="voice-call-btn"
+            onClick={() => setGroupSettingsOpen(true)}
+            title="群组设置"
+          />
+        )}
       </div>
 
       {/* 消息列表 */}
@@ -437,6 +501,13 @@ function Chat() {
         </div>
       )}
 
+      {/* 管理员非成员提示 */}
+      {isGroup && isAdmin && isGroupMember === false && (
+        <div style={{ padding: '12px 16px', textAlign: 'center', background: '#fff7e6', borderTop: '1px solid #ffe58f' }}>
+          <Text type="warning">您不是该群组的成员，无法发送消息。请在群组设置中添加自己为成员。</Text>
+        </div>
+      )}
+
       {/* 输入区域 */}
       <div className="chat-input">
         <input
@@ -448,26 +519,39 @@ function Chat() {
         <Button
           icon={<PaperClipOutlined />}
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || (isGroup && isAdmin && isGroupMember === false)}
           title="发送文件"
         />
         <Input.TextArea
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入消息..."
+          placeholder={isGroup && isAdmin && isGroupMember === false ? '您不是群组成员，无法发送消息' : '输入消息...'}
           autoSize={{ minRows: 1, maxRows: 4 }}
           className="chat-textarea"
+          disabled={isGroup && isAdmin && isGroupMember === false}
         />
         <Button
           type="primary"
           icon={<SendOutlined />}
           onClick={handleSend}
-          disabled={!inputValue.trim() || uploading}
+          disabled={!inputValue.trim() || uploading || (isGroup && isAdmin && isGroupMember === false)}
         >
           发送
         </Button>
       </div>
+
+      {/* 群组设置弹窗 */}
+      {isGroup && currentConversation && (
+        <GroupSettings
+          groupId={currentConversation}
+          open={groupSettingsOpen}
+          onClose={() => setGroupSettingsOpen(false)}
+          onGroupNameChange={(name) => {
+            useChatStore.getState().updateConversationName(currentConversation, name);
+          }}
+        />
+      )}
     </div>
   );
 }

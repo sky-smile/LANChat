@@ -82,7 +82,7 @@ export const useChatStore = create<ChatState>()(
             const newConv: Conversation = {
               id: convId,
               name: message.receiverType === 'group'
-                ? (convId.slice(0, 8) + '...')
+                ? '加载中...'
                 : (message.senderName || convId.slice(0, 8)),
               lastMessage: message,
               unreadCount: state.currentConversation === convId ? 0 : 1,

@@ -1,15 +1,26 @@
-import { useEffect } from 'react';
-import { useRef } from 'react';
-import { Outlet } from 'react-router-dom';
-import { Layout as AntLayout } from 'antd';
-import Sidebar from './Sidebar';
+import { useEffect, useRef } from 'react';
 import VoiceCall from './VoiceCall';
+import NavRail from './NavRail';
+import ConversationList from './ConversationList';
+import Chat from './Chat';
+import Contacts from './Contacts';
+import Groups from './Groups';
+import Settings from './Settings';
+import Admin from './Admin';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useAuthStore } from '@/stores/auth';
+import { useNavStore, type PanelType } from '@/stores/nav';
 import './Layout.css';
 
-const { Content } = AntLayout;
+/** 中间面板内容映射 */
+const panelComponents: Record<PanelType, React.ComponentType> = {
+  messages: ConversationList,
+  contacts: Contacts,
+  groups: Groups,
+  settings: Settings,
+  admin: Admin,
+};
 
 function Layout() {
   // 共享的 WebSocket ref，供 WebSocket 和 WebRTC 使用
@@ -30,20 +41,39 @@ function Layout() {
   // 初始化 WebRTC（内部自动注册信令处理器到 callSignalingBus）
   const { acceptCall, rejectCall, hangup, toggleMute } = useWebRTC(wsRef);
 
+  // 获取当前激活的中间面板
+  const activePanel = useNavStore((state) => state.activePanel);
+  const MiddleContent = panelComponents[activePanel];
+
+  // 设置和管理面板不需要显示聊天窗口
+  const hideChatPanel = activePanel === 'settings' || activePanel === 'admin';
+
   return (
-    <AntLayout className="app-layout">
-      <Sidebar />
-      <Content className="app-content">
-        <Outlet />
-      </Content>
-      {/* 语音通话 UI 覆盖层 */}
+    <div className="app-layout-3col">
+      {/* 左列：导航栏 */}
+      <NavRail />
+
+      {/* 中间列：列表面板 */}
+      <div className={`middle-panel ${hideChatPanel ? 'middle-panel-expanded' : ''}`}>
+        <MiddleContent />
+      </div>
+
+      {/* 右列：聊天窗口（设置和管理时隐藏） */}
+      {!hideChatPanel && (
+        <div className="right-panel">
+          <Chat />
+        </div>
+      )}
+
+      {/* 语音通话 UI 悬浮条 */}
       <VoiceCall
         onAccept={acceptCall}
         onReject={rejectCall}
         onHangup={hangup}
         onToggleMute={toggleMute}
+        expanded={hideChatPanel}
       />
-    </AntLayout>
+    </div>
   );
 }
 

@@ -9,6 +9,7 @@ import {
   SearchOutlined,
   TeamOutlined,
   SafetyOutlined,
+  TeamOutlined as GroupsIcon,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
@@ -99,6 +100,11 @@ function Sidebar() {
       key: '/contacts',
       icon: <ContactsOutlined />,
       label: '联系人',
+    },
+    {
+      key: '/groups',
+      icon: <GroupsIcon />,
+      label: '群组',
     },
     {
       key: '/settings',

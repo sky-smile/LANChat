@@ -1,8 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
+import { useContactsStore } from '@/stores/contacts';
 import { dispatchCallSignaling } from './callSignalingBus';
 import { playMessageSound } from '@/utils/notification';
+import api from '@/services/api';
 
 // WebSocket 消息类型
 interface WsMessage {
@@ -134,6 +136,19 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
           }
         }
 
+        // 群组新会话时获取群组真实名称
+        if (payload.receiver_type === 'group') {
+          const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+          if (conv && (conv.name === '加载中...' || conv.name.length === 36)) {
+            api.get(`/groups/${convId}`).then((resp) => {
+              const group = resp.data.data;
+              if (group?.name) {
+                useChatStore.getState().updateConversationName(convId, group.name);
+              }
+            }).catch(() => {});
+          }
+        }
+
         // 非自己消息
         if (payload.sender_id !== currentUserId) {
           if (isViewingConv) {
@@ -164,6 +179,11 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
       case 'presence': {
         const presence = msg.payload as PresencePayload;
         updateContactStatus(presence.user_id, presence.status);
+        // 同步更新联系人列表的在线状态
+        useContactsStore.getState().updateContactStatus(
+          presence.user_id,
+          presence.status as 'online' | 'away' | 'busy' | 'offline',
+        );
         break;
       }
 

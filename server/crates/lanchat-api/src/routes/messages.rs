@@ -12,7 +12,7 @@ use lanchat_common::error::ApiError;
 
 use crate::error::AppError;
 use crate::AppState;
-use lanchat_core::models::Message;
+use lanchat_core::models::MessageWithSender;
 
 /// 需要认证的消息路由
 pub fn message_routes() -> Router<AppState> {
@@ -32,7 +32,7 @@ async fn history_handler(
     axum::extract::Extension(user_id): axum::extract::Extension<String>,
     Path((target_id, target_type)): Path<(String, String)>,
     Query(query): Query<HistoryQuery>,
-) -> Result<Json<ApiResponse<Vec<Message>>>, AppError> {
+) -> Result<Json<ApiResponse<Vec<MessageWithSender>>>, AppError> {
     let uid = Uuid::parse_str(&user_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
     let tid = Uuid::parse_str(&target_id)

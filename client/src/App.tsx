@@ -1,9 +1,5 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
-import Chat from './components/Chat';
-import Contacts from './components/Contacts';
-import Settings from './components/Settings';
-import Admin from './components/Admin';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -18,12 +14,9 @@ function App() {
             <Layout />
           </ProtectedRoute>
         }
-      >
-        <Route index element={<Chat />} />
-        <Route path="contacts" element={<Contacts />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="admin" element={<Admin />} />
-      </Route>
+      />
+      {/* 其他路径重定向到首页 */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

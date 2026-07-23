@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Avatar, Badge } from 'antd';
 import {
   PhoneOutlined,
@@ -15,20 +15,25 @@ interface VoiceCallProps {
   onReject: () => void;
   onHangup: () => void;
   onToggleMute: () => void;
+  expanded?: boolean;
 }
 
-function VoiceCall({ onAccept, onReject, onHangup, onToggleMute }: VoiceCallProps) {
+function VoiceCall({ onAccept, onReject, onHangup, onToggleMute, expanded }: VoiceCallProps) {
   const {
     callStatus, peerName, role, isMuted, connectedAt,
     callType, groupName, participants,
   } = useCallStore();
   const [duration, setDuration] = useState('00:00');
+  const isFirstMount = useRef(true);
 
-  // 组件挂载时重置残留的通话状态（如页面刷新后）
+  // 清理残留的通话状态（HMR 热更新后 store 状态会保留）
   useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
     const state = useCallStore.getState();
-    if (state.callStatus !== 'idle') {
-      // 直接重置到 idle，不经过 'ended' 状态（避免闪现遮罩层）
+    if (state.callStatus === 'ended') {
       useCallStore.setState({
         callStatus: 'idle',
         callId: null,
@@ -64,110 +69,116 @@ function VoiceCall({ onAccept, onReject, onHangup, onToggleMute }: VoiceCallProp
 
   const isGroup = callType === 'group';
   const isRinging = callStatus === 'ringing' && role === 'callee';
-  const isCalling = callStatus === 'calling';
+  const isCalling = callStatus === 'calling' || (callStatus === 'ringing' && role === 'caller');
+  const isConnecting = callStatus === 'connecting';
   const isConnected = callStatus === 'connected';
   const isEnded = callStatus === 'ended';
 
-  // 显示名称
-  const displayName = isGroup ? (groupName || '群组通话') : (peerName || '未知用户');
+  // peerName 可能为空（老版本来电未传名称），兜底显示"来电"
+  const displayName = isGroup ? (groupName || '群组通话') : (peerName || '来电');
+
+  // 状态指示文本
+  let statusText = '';
+  if (isCalling) statusText = '正在呼叫...';
+  else if (isRinging && !isGroup) statusText = '来电中...';
+  else if (isRinging && isGroup) statusText = `${peerName || '好友'} 邀请你加入群组通话`;
+  else if (isConnecting) statusText = '连接中...';
+  else if (isConnected) statusText = duration;
+  else if (isEnded) statusText = '通话已结束';
+
+  // 呼叫/响铃/连接中 → 脉冲动画
+  const isPulsing = isCalling || isRinging || isConnecting;
 
   return (
-    <div className="voice-call-overlay">
-      <div className="voice-call-card">
-        {/* 头像 */}
-        <div className="voice-call-avatar">
-          {isGroup ? (
-            <Badge count={participants.length} offset={[-5, 65]}>
-              <Avatar size={80} icon={<TeamOutlined />} style={{ backgroundColor: '#1890ff' }} />
-            </Badge>
-          ) : (
-            <Avatar size={80} icon={<PhoneOutlined />} />
-          )}
+    <div className={`voice-call-bar-wrapper ${expanded ? 'voice-call-bar-wrapper-expanded' : ''}`}>
+      <div className={`voice-call-bar ${isPulsing ? 'voice-call-bar-pulse' : ''} ${isEnded ? 'voice-call-bar-ended' : ''}`}>
+      {/* 左侧：头像 + 信息 */}
+      <div className="voice-call-bar-left">
+        <Badge dot status={isConnected ? 'success' : isEnded ? 'default' : 'processing'} offset={[-2, 28]}>
+          <Avatar
+            size={36}
+            icon={isGroup ? <TeamOutlined /> : <PhoneOutlined />}
+            style={{ backgroundColor: isConnected ? '#52c41a' : '#1890ff', flexShrink: 0 }}
+          />
+        </Badge>
+        <div className="voice-call-bar-info">
+          <span className="voice-call-bar-name">{displayName}</span>
+          <span className="voice-call-bar-status">{statusText}</span>
         </div>
+      </div>
 
-        {/* 名称 */}
-        <div className="voice-call-name">{displayName}</div>
-
-        {/* 群组通话参与者列表 */}
-        {isGroup && participants.length > 0 && (
-          <div className="voice-call-participants">
-            {participants.map((p) => (
-              <Badge key={p.user_id} dot status={p.is_muted ? 'default' : 'success'} offset={[-2, 2]}>
-                <Avatar size={32} style={{ backgroundColor: '#87d068', margin: '2px' }}>
-                  {p.user_name?.[0] || '?'}
-                </Avatar>
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* 状态文字 */}
-        <div className="voice-call-status">
-          {isCalling && '正在呼叫...'}
-          {isRinging && !isGroup && '来电中...'}
-          {isRinging && isGroup && `${peerName || '好友'} 邀请你加入群组通话`}
-          {callStatus === 'connecting' && '连接中...'}
-          {isConnected && duration}
-          {isEnded && '通话已结束'}
-        </div>
-
-        {/* 操作按钮 */}
-        <div className="voice-call-actions">
-          {/* 被叫方：来电时显示接听/拒接 */}
-          {isRinging && (
-            <>
-              <Button
-                type="primary"
-                shape="circle"
-                size="large"
-                icon={<PhoneOutlined />}
-                className="call-btn call-btn-accept"
-                onClick={onAccept}
-              />
-              <Button
-                danger
-                shape="circle"
-                size="large"
-                icon={<CloseOutlined />}
-                className="call-btn call-btn-reject"
-                onClick={onReject}
-              />
-            </>
-          )}
-
-          {/* 通话中：显示静音/挂断 */}
-          {isConnected && (
-            <>
-              <Button
-                shape="circle"
-                size="large"
-                icon={isMuted ? <AudioMutedOutlined /> : <AudioOutlined />}
-                className={`call-btn ${isMuted ? 'call-btn-muted' : 'call-btn-unmuted'}`}
-                onClick={onToggleMute}
-              />
-              <Button
-                danger
-                shape="circle"
-                size="large"
-                icon={<CloseOutlined />}
-                className="call-btn call-btn-hangup"
-                onClick={onHangup}
-              />
-            </>
-          )}
-
-          {/* 呼叫中/连接中：只显示挂断 */}
-          {(isCalling || callStatus === 'connecting') && (
+      {/* 右侧：操作按钮 */}
+      <div className="voice-call-bar-actions">
+        {/* 被叫方来电：接听/拒接 */}
+        {isRinging && (
+          <>
+            <Button
+              type="primary"
+              shape="circle"
+              size="small"
+              icon={<PhoneOutlined />}
+              className="call-bar-btn call-bar-btn-accept"
+              onClick={onAccept}
+            />
             <Button
               danger
               shape="circle"
-              size="large"
+              size="small"
               icon={<CloseOutlined />}
-              className="call-btn call-btn-hangup"
+              className="call-bar-btn call-bar-btn-reject"
+              onClick={onReject}
+            />
+          </>
+        )}
+
+        {/* 通话中：静音/挂断 */}
+        {isConnected && (
+          <>
+            <Button
+              shape="circle"
+              size="small"
+              icon={isMuted ? <AudioMutedOutlined /> : <AudioOutlined />}
+              className={`call-bar-btn ${isMuted ? 'call-bar-btn-muted' : ''}`}
+              onClick={onToggleMute}
+            />
+            <Button
+              danger
+              shape="circle"
+              size="small"
+              icon={<CloseOutlined />}
+              className="call-bar-btn call-bar-btn-hangup"
               onClick={onHangup}
             />
-          )}
-        </div>
+          </>
+        )}
+
+        {/* 呼叫中/连接中：挂断 */}
+        {(isCalling || isConnecting) && (
+          <Button
+            danger
+            shape="circle"
+            size="small"
+            icon={<CloseOutlined />}
+            className="call-bar-btn call-bar-btn-hangup"
+            onClick={onHangup}
+          />
+        )}
+
+        {/* 通话已结束：关闭 */}
+        {isEnded && (
+          <Button
+            shape="circle"
+            size="small"
+            icon={<CloseOutlined />}
+            className="call-bar-btn"
+            onClick={() => useCallStore.setState({
+              callStatus: 'idle', callId: null, callType: 'single',
+              peerId: null, peerName: null, role: null, isMuted: false,
+              connectedAt: null, groupId: null, groupName: null, participants: [],
+            })}
+          />
+        )}
+      </div>
       </div>
     </div>
   );

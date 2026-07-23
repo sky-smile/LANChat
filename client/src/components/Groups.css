@@ -1,0 +1,80 @@
+/* 群组面板 */
+.groups-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #fff;
+}
+
+.groups-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.groups-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.groups-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.groups-list-container {
+  flex: 1;
+  overflow: auto;
+  padding: 0 8px;
+}
+
+.groups-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+}
+
+.group-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  gap: 12px;
+}
+
+.group-item:hover {
+  background-color: #f5f5f5;
+}
+
+.group-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.group-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.group-member-count {
+  color: #1890ff;
+}

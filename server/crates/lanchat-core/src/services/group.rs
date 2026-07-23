@@ -24,6 +24,16 @@ pub async fn get_group(
     group_repository::find_by_id(pool, group_id).await
 }
 
+/// 更新群组信息
+pub async fn update_group(
+    pool: &PgPool,
+    group_id: &Uuid,
+    name: Option<&str>,
+    description: Option<&str>,
+) -> Result<Group, sqlx::Error> {
+    group_repository::update_group(pool, group_id, name, description).await
+}
+
 /// 添加成员到群组
 pub async fn add_member(
     pool: &PgPool,
@@ -67,6 +77,13 @@ pub async fn get_user_groups(
     group_repository::get_user_groups(pool, user_id).await
 }
 
+/// 获取所有群组（管理员专用）
+pub async fn get_all_groups(
+    pool: &PgPool,
+) -> Result<Vec<Group>, sqlx::Error> {
+    group_repository::get_all_groups(pool).await
+}
+
 /// 检查用户是否是群组成员
 pub async fn is_member(
     pool: &PgPool,
@@ -83,4 +100,12 @@ pub async fn delete_group(
     user_id: &Uuid,
 ) -> Result<bool, sqlx::Error> {
     group_repository::delete_group(pool, group_id, user_id).await
+}
+
+/// 强制删除群组（管理员专用）
+pub async fn force_delete_group(
+    pool: &PgPool,
+    group_id: &Uuid,
+) -> Result<bool, sqlx::Error> {
+    group_repository::force_delete_group(pool, group_id).await
 }

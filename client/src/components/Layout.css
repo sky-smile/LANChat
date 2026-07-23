@@ -1,13 +1,36 @@
-.app-layout {
+/* 三列布局 */
+.app-layout-3col {
+  display: flex;
   height: 100vh;
   overflow: hidden;
 }
 
-.app-content {
-  background-color: #f0f2f5;
+/* 中间列：列表面板 */
+.middle-panel {
+  width: 320px;
+  min-width: 280px;
+  max-width: 400px;
+  border-right: 1px solid #e8e8e8;
+  background: #fff;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 中间列扩展模式（设置/管理页面时占满剩余空间） */
+.middle-panel-expanded {
+  flex: 1;
+  width: auto;
+  max-width: none;
+  border-right: none;
+}
+
+/* 右侧聊天窗口 */
+.right-panel {
   flex: 1;
   min-width: 0;
+  background: #f5f5f5;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }

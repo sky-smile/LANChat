@@ -3,7 +3,7 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::Message;
+use crate::models::{Message, MessageWithSender};
 use crate::repository::message_repository;
 
 /// 发送消息
@@ -36,7 +36,7 @@ pub async fn get_history(
     target_type: &str,
     limit: i64,
     before: Option<&str>,
-) -> Result<Vec<Message>, sqlx::Error> {
+) -> Result<Vec<MessageWithSender>, sqlx::Error> {
     if target_type == "group" {
         message_repository::get_group_messages(pool, target_id, limit, before).await
     } else {

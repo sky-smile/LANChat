@@ -3,7 +3,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -21,6 +21,7 @@ pub fn group_routes() -> Router<AppState> {
         .route("/", post(create_group_handler))
         .route("/", get(list_user_groups_handler))
         .route("/:group_id", get(get_group_handler))
+        .route("/:group_id", put(update_group_handler))
         .route("/:group_id", delete(delete_group_handler))
         .route("/:group_id/members", get(get_members_handler))
         .route("/:group_id/members", post(add_member_handler))
@@ -35,7 +36,14 @@ struct CreateGroupRequest {
     member_ids: Option<Vec<String>>,
 }
 
-/// 创建群组
+/// 更新群组请求
+#[derive(Deserialize)]
+struct UpdateGroupRequest {
+    name: Option<String>,
+    description: Option<String>,
+}
+
+/// 创建群组（仅管理员）
 async fn create_group_handler(
     State(state): State<AppState>,
     axum::extract::Extension(user_id): axum::extract::Extension<String>,
@@ -43,6 +51,16 @@ async fn create_group_handler(
 ) -> Result<(StatusCode, Json<ApiResponse<Group>>), AppError> {
     let uid = Uuid::parse_str(&user_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
+
+    // 检查是否为管理员
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+        .await
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
+
+    if user.role != "admin" {
+        return Err(AppError(ApiError::AuthError(lanchat_common::error::AuthError::Forbidden)));
+    }
 
     let group = lanchat_core::services::group::create_group(
         &state.db,
@@ -76,19 +94,25 @@ async fn get_group_handler(
     State(state): State<AppState>,
     axum::extract::Extension(user_id): axum::extract::Extension<String>,
     Path(group_id): Path<String>,
-) -> Result<Json<ApiResponse<Group>>, AppError> {
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     let uid = Uuid::parse_str(&user_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
     let gid = Uuid::parse_str(&group_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的群组ID".to_string())))?;
 
-    // 检查是否是成员
-    let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+    // 检查是否是成员（管理员可访问任意群组）
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
         .await
-        .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
-    if !is_member {
-        return Err(AppError(ApiError::NotFound("群组不存在或无权访问".to_string())));
+    if user.role != "admin" {
+        let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+            .await
+            .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        if !is_member {
+            return Err(AppError(ApiError::NotFound("群组不存在或无权访问".to_string())));
+        }
     }
 
     let group = lanchat_core::services::group::get_group(&state.db, &gid)
@@ -96,25 +120,113 @@ async fn get_group_handler(
         .map_err(|e| AppError(ApiError::DatabaseError(e)))?
         .ok_or_else(|| AppError(ApiError::NotFound("群组不存在".to_string())))?;
 
-    Ok(Json(ApiResponse::success(group)))
-}
-
-/// 获取用户所在的群组列表
-async fn list_user_groups_handler(
-    State(state): State<AppState>,
-    axum::extract::Extension(user_id): axum::extract::Extension<String>,
-) -> Result<Json<ApiResponse<Vec<Group>>>, AppError> {
-    let uid = Uuid::parse_str(&user_id)
-        .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
-
-    let groups = lanchat_core::services::group::get_user_groups(&state.db, &uid)
+    let member_count = lanchat_core::repository::group_repository::get_member_count(&state.db, &gid)
         .await
         .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
 
-    Ok(Json(ApiResponse::success(groups)))
+    let can_manage = user.role == "admin";
+
+    let result = serde_json::json!({
+        "id": group.id,
+        "name": group.name,
+        "description": group.description,
+        "avatar_url": group.avatar_url,
+        "group_type": group.group_type,
+        "max_members": group.max_members,
+        "created_by": group.created_by,
+        "created_at": group.created_at,
+        "member_count": member_count,
+        "can_manage": can_manage,
+    });
+
+    Ok(Json(ApiResponse::success(result)))
 }
 
-/// 删除群组
+/// 更新群组信息（仅管理员）
+async fn update_group_handler(
+    State(state): State<AppState>,
+    axum::extract::Extension(user_id): axum::extract::Extension<String>,
+    Path(group_id): Path<String>,
+    Json(req): Json<UpdateGroupRequest>,
+) -> Result<Json<ApiResponse<Group>>, AppError> {
+    let uid = Uuid::parse_str(&user_id)
+        .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
+    let gid = Uuid::parse_str(&group_id)
+        .map_err(|_| AppError(ApiError::ValidationError("无效的群组ID".to_string())))?;
+
+    // 检查操作者是否是管理员
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+        .await
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
+
+    if user.role != "admin" {
+        return Err(AppError(ApiError::AuthError(lanchat_common::error::AuthError::Forbidden)));
+    }
+
+    let group = lanchat_core::services::group::update_group(
+        &state.db,
+        &gid,
+        req.name.as_deref(),
+        req.description.as_deref(),
+    )
+    .await
+    .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+
+    Ok(Json(ApiResponse::success(group)))
+}
+
+/// 获取用户所在的群组列表（管理员返回所有群组）
+async fn list_user_groups_handler(
+    State(state): State<AppState>,
+    axum::extract::Extension(user_id): axum::extract::Extension<String>,
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, AppError> {
+    let uid = Uuid::parse_str(&user_id)
+        .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
+
+    // 检查是否为管理员
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+        .await
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
+
+    let groups = if user.role == "admin" {
+        lanchat_core::services::group::get_all_groups(&state.db)
+            .await
+            .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+    } else {
+        lanchat_core::services::group::get_user_groups(&state.db, &uid)
+            .await
+            .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+    };
+
+    let mut result = Vec::new();
+    for group in groups {
+        let member_count = lanchat_core::repository::group_repository::get_member_count(&state.db, &group.id)
+            .await
+            .unwrap_or(0);
+        // 管理员查看所有群组时，标记是否为成员
+        let is_member = if user.role == "admin" {
+            lanchat_core::services::group::is_member(&state.db, &group.id, &uid)
+                .await
+                .unwrap_or(false)
+        } else {
+            true // 普通用户只看到自己所在的群组，都是成员
+        };
+        result.push(serde_json::json!({
+            "id": group.id,
+            "name": group.name,
+            "description": group.description,
+            "avatar_url": group.avatar_url,
+            "member_count": member_count,
+            "is_member": is_member,
+        }));
+    }
+
+    Ok(Json(ApiResponse::success(result)))
+}
+
+/// 删除群组（管理员可删除任意群组，普通用户只能删除自己创建的）
 async fn delete_group_handler(
     State(state): State<AppState>,
     axum::extract::Extension(user_id): axum::extract::Extension<String>,
@@ -125,9 +237,21 @@ async fn delete_group_handler(
     let gid = Uuid::parse_str(&group_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的群组ID".to_string())))?;
 
-    let deleted = lanchat_core::services::group::delete_group(&state.db, &gid, &uid)
+    // 检查是否为管理员
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
         .await
-        .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
+
+    let deleted = if user.role == "admin" {
+        lanchat_core::services::group::force_delete_group(&state.db, &gid)
+            .await
+            .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+    } else {
+        lanchat_core::services::group::delete_group(&state.db, &gid, &uid)
+            .await
+            .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+    };
 
     if !deleted {
         return Err(AppError(ApiError::NotFound("群组不存在或无权删除".to_string())));
@@ -158,12 +282,19 @@ async fn get_members_handler(
     let gid = Uuid::parse_str(&group_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的群组ID".to_string())))?;
 
-    let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+    // 检查是否是成员（管理员可访问任意群组）
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
         .await
-        .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
-    if !is_member {
-        return Err(AppError(ApiError::NotFound("群组不存在或无权访问".to_string())));
+    if user.role != "admin" {
+        let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+            .await
+            .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        if !is_member {
+            return Err(AppError(ApiError::NotFound("群组不存在或无权访问".to_string())));
+        }
     }
 
     let members = lanchat_core::services::group::get_members(&state.db, &gid)
@@ -192,7 +323,7 @@ struct AddMemberRequest {
     role: Option<String>,
 }
 
-/// 添加成员到群组
+/// 添加成员到群组（仅管理员）
 async fn add_member_handler(
     State(state): State<AppState>,
     axum::extract::Extension(user_id): axum::extract::Extension<String>,
@@ -206,13 +337,14 @@ async fn add_member_handler(
     let target_uid = Uuid::parse_str(&req.user_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的目标用户ID".to_string())))?;
 
-    // 检查操作者是否是群成员
-    let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+    // 检查操作者是否是管理员
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
         .await
-        .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
-    if !is_member {
-        return Err(AppError(ApiError::NotFound("群组不存在或无权操作".to_string())));
+    if user.role != "admin" {
+        return Err(AppError(ApiError::AuthError(lanchat_common::error::AuthError::Forbidden)));
     }
 
     let role = req.role.as_deref().unwrap_or("member");
@@ -236,13 +368,19 @@ async fn remove_member_handler(
     let target_uid = Uuid::parse_str(&target_user_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的目标用户ID".to_string())))?;
 
-    // 检查操作者是否是群成员
-    let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+    // 检查操作者是否是管理员或群成员
+    let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
         .await
-        .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
-    if !is_member {
-        return Err(AppError(ApiError::NotFound("群组不存在或无权操作".to_string())));
+    if user.role != "admin" {
+        let is_member = lanchat_core::services::group::is_member(&state.db, &gid, &uid)
+            .await
+            .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
+        if !is_member {
+            return Err(AppError(ApiError::NotFound("群组不存在或无权操作".to_string())));
+        }
     }
 
     let removed = lanchat_core::services::group::remove_member(&state.db, &gid, &target_uid)

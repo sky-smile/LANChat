@@ -1,48 +1,19 @@
-.contacts-page {
+/* 联系人面板 */
+.contacts-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #f5f5f5;
-}
-
-.contacts-header {
-  padding: 16px 24px;
   background: #fff;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.contacts-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.contacts-tabs {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.contacts-tabs .ant-tabs-content-holder {
-  flex: 1;
-  overflow: auto;
 }
 
 .contacts-list-container {
+  flex: 1;
+  overflow: auto;
   padding: 0 8px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
 }
 
 .contacts-search {
   padding: 8px;
-}
-
-.contacts-toolbar {
-  padding: 8px;
-  display: flex;
-  justify-content: flex-end;
 }
 
 .contacts-loading {
@@ -50,13 +21,6 @@
   justify-content: center;
   align-items: center;
   padding: 40px 0;
-}
-
-.contacts-section-title {
-  padding: 8px 16px 4px;
-  font-size: 12px;
-  color: #999;
-  font-weight: 500;
 }
 
 .contact-item {

@@ -58,6 +58,22 @@ pub struct Message {
     pub created_at: DateTime<Utc>,
 }
 
+/// 带发送者信息的消息模型（用于历史消息查询）
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MessageWithSender {
+    pub id: Uuid,
+    pub sender_id: Uuid,
+    pub receiver_id: Uuid,
+    pub receiver_type: String,
+    pub content: Option<String>,
+    pub message_type: String,
+    pub metadata: Option<serde_json::Value>,
+    pub is_read: bool,
+    pub created_at: DateTime<Utc>,
+    pub sender_name: String,
+    pub sender_display_name: Option<String>,
+}
+
 /// 文件模型
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct File {
