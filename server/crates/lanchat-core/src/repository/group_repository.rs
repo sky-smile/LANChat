@@ -26,6 +26,15 @@ pub async fn create_group(
     .fetch_one(&mut *tx)
     .await?;
 
+    // 将创建者添加为群主 (owner)
+    sqlx::query(
+        "INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'owner')",
+    )
+    .bind(group.id)
+    .bind(created_by)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
 
     Ok(group)
