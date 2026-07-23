@@ -16,8 +16,9 @@ use lanchat_common::protocol::*;
 
 use crate::{AppState, GroupCallInfo};
 
-/// 在线用户连接映射：user_id -> 消息发送器
-pub type Connections = Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>;
+/// 在线用户连接映射：user_id -> (消息发送器, 连接令牌)
+/// 连接令牌用于区分同一用户的多个连接，避免重连时误删新连接
+pub type Connections = Arc<RwLock<HashMap<String, (mpsc::UnboundedSender<Message>, Uuid)>>>;
 
 /// 创建连接管理器
 pub fn create_connections() -> Connections {
@@ -90,10 +91,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     };
 
     // 注册连接
+    let conn_token = Uuid::new_v4();
     {
         let mut conns = state.connections.write().await;
         // 如果同一用户已有连接，关闭旧连接
-        if let Some(old_tx) = conns.insert(user_id.clone(), tx.clone()) {
+        if let Some((old_tx, _)) = conns.insert(user_id.clone(), (tx.clone(), conn_token)) {
             let _ = old_tx.send(Message::Close(None));
         }
     }
@@ -134,10 +136,14 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         _ = recv_task => {},
     }
 
-    // 清理：移除连接，更新离线状态
+    // 清理：仅当连接 token 匹配时才移除（避免重连时误删新连接）
     {
         let mut conns = state.connections.write().await;
-        conns.remove(&user_id);
+        if let Some((_, token)) = conns.get(&user_id) {
+            if *token == conn_token {
+                conns.remove(&user_id);
+            }
+        }
     }
 
     update_user_status(&state, &user_id, "offline").await;
@@ -200,7 +206,7 @@ async fn handle_text_message(state: &AppState, user_id: &str, text: &str) {
         }
         WsMessage::Ping => {
             let conns = state.connections.read().await;
-            if let Some(tx) = conns.get(user_id) {
+            if let Some((tx, _)) = conns.get(user_id) {
                 let _ = tx.send(Message::Text(WsMessage::Pong.to_json().into()));
             }
         }
@@ -230,7 +236,7 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
             tracing::warn!("用户 {} 尝试向非成员群组 {} 发送消息", sender_id, payload.receiver_id);
             // 发送错误通知给发送者
             let conns = state.connections.read().await;
-            if let Some(tx) = conns.get(sender_id) {
+            if let Some((tx, _)) = conns.get(sender_id) {
                 let err_msg = serde_json::json!({
                     "type": "error",
                     "payload": { "message": "您不是该群组的成员，无法发送消息" }
@@ -271,7 +277,7 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
     // 发送确认给发送者
     {
         let conns = state.connections.read().await;
-        if let Some(tx) = conns.get(sender_id) {
+        if let Some((tx, _)) = conns.get(sender_id) {
             let ack = WsMessage::MessageAck(MessageAckPayload {
                 client_msg_id: payload.client_msg_id,
                 server_msg_id: message.id.to_string(),
@@ -298,7 +304,7 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
     if payload.receiver_type == "user" {
         // 一对一消息：发送给接收者
         let conns = state.connections.read().await;
-        if let Some(tx) = conns.get(&payload.receiver_id) {
+        if let Some((tx, _)) = conns.get(&payload.receiver_id) {
             let _ = tx.send(Message::Text(new_msg_text.into()));
         }
     } else if payload.receiver_type == "group" {
@@ -310,7 +316,7 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
                     for mid in &member_ids {
                         let mid_str = mid.to_string();
                         if mid_str != sender_id {
-                            if let Some(tx) = conns.get(&mid_str) {
+                            if let Some((tx, _)) = conns.get(&mid_str) {
                                 let _ = tx.send(Message::Text(new_msg_text.clone().into()));
                             }
                         }
@@ -327,7 +333,7 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
 /// 处理正在输入
 async fn handle_typing(state: &AppState, sender_id: &str, payload: TypingPayload) {
     let conns = state.connections.read().await;
-    if let Some(tx) = conns.get(&payload.receiver_id) {
+    if let Some((tx, _)) = conns.get(&payload.receiver_id) {
         let typing = WsMessage::Typing(TypingPayload {
             sender_id: sender_id.to_string(),
             ..payload
@@ -370,7 +376,7 @@ async fn handle_mark_read(state: &AppState, reader_id: &str, payload: MarkReadPa
     let receipt_text = receipt.to_json();
 
     let conns = state.connections.read().await;
-    if let Some(tx) = conns.get(&payload.sender_id) {
+    if let Some((tx, _)) = conns.get(&payload.sender_id) {
         let _ = tx.send(Message::Text(receipt_text.into()));
     }
 }
@@ -393,13 +399,13 @@ async fn handle_call_invite(state: &AppState, caller_id: &str, payload: CallInvi
 
     // 检查被叫方是否在线
     let conns = state.connections.read().await;
-    if let Some(tx) = conns.get(callee_id) {
+    if let Some((tx, _)) = conns.get(callee_id) {
         // 转发邀请给被叫方
         let invite = WsMessage::CallInvite(payload.clone());
         let _ = tx.send(Message::Text(invite.to_json().into()));
 
         // 通知呼叫方：对方正在响铃
-        if let Some(caller_tx) = conns.get(caller_id) {
+        if let Some((caller_tx, _)) = conns.get(caller_id) {
             let status = WsMessage::CallStatus(CallStatusPayload {
                 call_id: payload.call_id.clone(),
                 status: "ringing".to_string(),
@@ -409,7 +415,7 @@ async fn handle_call_invite(state: &AppState, caller_id: &str, payload: CallInvi
         }
     } else {
         // 被叫方不在线，通知呼叫方
-        if let Some(caller_tx) = conns.get(caller_id) {
+        if let Some((caller_tx, _)) = conns.get(caller_id) {
             let status = WsMessage::CallStatus(CallStatusPayload {
                 call_id: payload.call_id,
                 status: "ended".to_string(),
@@ -431,7 +437,7 @@ async fn handle_call_accept(state: &AppState, _user_id: &str, payload: CallAccep
     if let Some(caller_id) = caller_id {
         let conns = state.connections.read().await;
         // 通知呼叫方：通话已接通
-        if let Some(tx) = conns.get(&caller_id) {
+        if let Some((tx, _)) = conns.get(&caller_id) {
             let status = WsMessage::CallStatus(CallStatusPayload {
                 call_id: payload.call_id.clone(),
                 status: "connected".to_string(),
@@ -440,7 +446,7 @@ async fn handle_call_accept(state: &AppState, _user_id: &str, payload: CallAccep
             let _ = tx.send(Message::Text(status.to_json().into()));
         }
         // 通知接听方：通话已接通
-        if let Some(tx) = conns.get(&payload.user_id) {
+        if let Some((tx, _)) = conns.get(&payload.user_id) {
             let status = WsMessage::CallStatus(CallStatusPayload {
                 call_id: payload.call_id.clone(),
                 status: "connected".to_string(),
@@ -461,7 +467,7 @@ async fn handle_call_reject(state: &AppState, _user_id: &str, payload: CallRejec
 
     if let Some(caller_id) = caller_id {
         let conns = state.connections.read().await;
-        if let Some(tx) = conns.get(&caller_id) {
+        if let Some((tx, _)) = conns.get(&caller_id) {
             let status = WsMessage::CallStatus(CallStatusPayload {
                 call_id: payload.call_id.clone(),
                 status: "rejected".to_string(),
@@ -491,7 +497,7 @@ async fn handle_call_hangup(state: &AppState, user_id: &str, payload: CallHangup
 
     if let Some(other_id) = other_id {
         let conns = state.connections.read().await;
-        if let Some(tx) = conns.get(&other_id) {
+        if let Some((tx, _)) = conns.get(&other_id) {
             let status = WsMessage::CallStatus(CallStatusPayload {
                 call_id: payload.call_id.clone(),
                 status: "ended".to_string(),
@@ -508,7 +514,7 @@ async fn handle_call_hangup(state: &AppState, user_id: &str, payload: CallHangup
 /// 转发 SDP（Offer/Answer）给对方
 async fn handle_call_sdp_forward(state: &AppState, receiver_id: &str, msg: WsMessage) {
     let conns = state.connections.read().await;
-    if let Some(tx) = conns.get(receiver_id) {
+    if let Some((tx, _)) = conns.get(receiver_id) {
         let _ = tx.send(Message::Text(msg.to_json().into()));
     }
 }
@@ -516,7 +522,7 @@ async fn handle_call_sdp_forward(state: &AppState, receiver_id: &str, msg: WsMes
 /// 转发 ICE Candidate 给对方
 async fn handle_call_ice_forward(state: &AppState, receiver_id: &str, payload: CallIcePayload) {
     let conns = state.connections.read().await;
-    if let Some(tx) = conns.get(receiver_id) {
+    if let Some((tx, _)) = conns.get(receiver_id) {
         let ice = WsMessage::CallIce(payload);
         let _ = tx.send(Message::Text(ice.to_json().into()));
     }
@@ -549,7 +555,7 @@ async fn broadcast_presence(state: &AppState, user_id: &str, status: &str, exclu
     let text = presence.to_json();
 
     let conns = state.connections.read().await;
-    for (uid, tx) in conns.iter() {
+    for (uid, (tx, _)) in conns.iter() {
         if Some(uid.as_str()) != exclude {
             let _ = tx.send(Message::Text(text.clone().into()));
         }
@@ -591,7 +597,7 @@ async fn handle_group_call_create(state: &AppState, user_id: &str, payload: Grou
 
     // 通知创建者通话已创建
     let conns = state.connections.read().await;
-    if let Some(tx) = conns.get(user_id) {
+    if let Some((tx, _)) = conns.get(user_id) {
         let participants_payload = GroupCallParticipantsPayload {
             call_id: payload.call_id.clone(),
             participants: vec![GroupCallParticipant {
@@ -613,7 +619,7 @@ async fn handle_group_call_create(state: &AppState, user_id: &str, payload: Grou
                     if member_str == user_id {
                         continue; // 跳过创建者
                     }
-                    if let Some(tx) = conns.get(&member_str) {
+                    if let Some((tx, _)) = conns.get(&member_str) {
                         let invite = GroupCallInvitePayload {
                             call_id: payload.call_id.clone(),
                             group_id: payload.group_id.clone(),
@@ -660,7 +666,7 @@ async fn handle_group_call_join(state: &AppState, user_id: &str, payload: GroupC
         // 通知所有参与者更新列表
         let conns = state.connections.read().await;
         for (pid, _) in &call_info.participants {
-            if let Some(tx) = conns.get(pid) {
+            if let Some((tx, _)) = conns.get(pid) {
                 let participants_payload = GroupCallParticipantsPayload {
                     call_id: payload.call_id.clone(),
                     participants: participants.clone(),
@@ -671,7 +677,7 @@ async fn handle_group_call_join(state: &AppState, user_id: &str, payload: GroupC
     } else {
         // 通话不存在
         let conns = state.connections.read().await;
-        if let Some(tx) = conns.get(user_id) {
+        if let Some((tx, _)) = conns.get(user_id) {
             let error = WsMessage::Error(ErrorPayload {
                 code: 404,
                 message: "群组通话不存在".to_string(),
@@ -711,7 +717,7 @@ async fn handle_group_call_leave(state: &AppState, user_id: &str, payload: Group
 
             let conns = state.connections.read().await;
             for (pid, _) in &call_info.participants {
-                if let Some(tx) = conns.get(pid) {
+                if let Some((tx, _)) = conns.get(pid) {
                     let participants_payload = GroupCallParticipantsPayload {
                         call_id: payload.call_id.clone(),
                         participants: participants.clone(),
