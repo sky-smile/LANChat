@@ -5,6 +5,7 @@ members = [
     "crates/lanchat-core",
     "crates/lanchat-db",
     "crates/lanchat-common",
+    "crates/lanchat-protocol",
 ]
 
 [workspace.package]
