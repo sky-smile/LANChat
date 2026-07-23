@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { getInitiateCall, getCreateGroupCall } from '@/hooks/useWebRTC';
 import api from '@/services/api';
+import { getFileUrl } from '@/utils/format';
 import GroupSettings from './GroupSettings';
 import './Chat.css';
 
@@ -300,12 +301,13 @@ function Chat() {
     metadata?: Record<string, unknown>;
   }) => {
     if (msg.messageType === 'image' && msg.metadata?.fileId) {
+      const fileId = msg.metadata.fileId as string;
       return (
         <div className="message-image">
           <img
-            src={`/api/storage/${msg.metadata.fileId as string}/thumbnail`}
+            src={getFileUrl(fileId, 'thumbnail')}
             alt={msg.metadata.fileName as string}
-            onClick={() => window.open(`/api/storage/${msg.metadata?.fileId as string}`)}
+            onClick={() => window.open(getFileUrl(fileId))}
             style={{ maxWidth: '200px', maxHeight: '200px', cursor: 'pointer' }}
           />
           <div className="message-content">{msg.content}</div>
@@ -314,13 +316,14 @@ function Chat() {
     }
 
     if (msg.messageType === 'file' && msg.metadata?.fileId) {
+      const fileId = msg.metadata.fileId as string;
       const fileSize = msg.metadata.fileSize as number;
       const sizeStr = fileSize > 1024 * 1024
         ? `${(fileSize / (1024 * 1024)).toFixed(1)} MB`
         : `${(fileSize / 1024).toFixed(1)} KB`;
 
       return (
-        <div className="message-file" onClick={() => window.open(`/api/storage/${msg.metadata?.fileId as string}`)}>
+        <div className="message-file" onClick={() => window.open(getFileUrl(fileId))}>
           <FileOutlined className="file-icon" />
           <div className="file-info">
             <div className="file-name">{msg.metadata.fileName as string}</div>

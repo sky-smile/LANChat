@@ -28,3 +28,19 @@ export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength) + '...';
 }
+
+/**
+ * 获取文件/缩略图的完整 URL
+ * 生产环境使用 VITE_API_URL 拼接，开发环境使用相对路径
+ */
+export function getFileUrl(fileId: string, type?: 'thumbnail'): string {
+  const suffix = type === 'thumbnail' ? '/thumbnail' : '';
+  const path = `/api/storage/${fileId}${suffix}`;
+  
+  if (import.meta.env.DEV) {
+    return path;
+  }
+  
+  const apiUrl = import.meta.env.VITE_API_URL;
+  return apiUrl ? `${apiUrl}${path}` : path;
+}
