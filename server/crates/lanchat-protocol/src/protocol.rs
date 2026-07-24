@@ -399,3 +399,109 @@ impl WsMessage {
         serde_json::from_str(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_auth_message_roundtrip() {
+        let msg = WsMessage::Auth(AuthPayload {
+            token: "test-token".to_string(),
+        });
+        let json = msg.to_json();
+        let parsed = WsMessage::from_json(&json).unwrap();
+        match parsed {
+            WsMessage::Auth(p) => assert_eq!(p.token, "test-token"),
+            _ => panic!("错误的消息类型"),
+        }
+    }
+
+    #[test]
+    fn test_send_message_roundtrip() {
+        let msg = WsMessage::SendMessage(SendMessagePayload {
+            client_msg_id: "c1".to_string(),
+            receiver_id: "u2".to_string(),
+            receiver_type: "user".to_string(),
+            content: "你好".to_string(),
+            message_type: "text".to_string(),
+            metadata: None,
+        });
+        let json = msg.to_json();
+        let parsed = WsMessage::from_json(&json).unwrap();
+        match parsed {
+            WsMessage::SendMessage(p) => {
+                assert_eq!(p.client_msg_id, "c1");
+                assert_eq!(p.content, "你好");
+            }
+            _ => panic!("错误的消息类型"),
+        }
+    }
+
+    #[test]
+    fn test_ping_pong_roundtrip() {
+        let ping = WsMessage::Ping;
+        let json = ping.to_json();
+        assert!(json.contains("\"type\":\"ping\""));
+        let pong = WsMessage::Pong;
+        let json = pong.to_json();
+        assert!(json.contains("\"type\":\"pong\""));
+    }
+
+    #[test]
+    fn test_call_invite_roundtrip() {
+        let msg = WsMessage::CallInvite(CallInvitePayload {
+            call_id: "call-1".to_string(),
+            caller_id: "u1".to_string(),
+            caller_name: "Alice".to_string(),
+            callee_id: "u2".to_string(),
+        });
+        let json = msg.to_json();
+        assert!(json.contains("call-1"));
+        let parsed = WsMessage::from_json(&json).unwrap();
+        match parsed {
+            WsMessage::CallInvite(p) => assert_eq!(p.caller_name, "Alice"),
+            _ => panic!("错误的消息类型"),
+        }
+    }
+
+    #[test]
+    fn test_group_call_participants_roundtrip() {
+        let msg = WsMessage::GroupCallParticipants(GroupCallParticipantsPayload {
+            call_id: "gc-1".to_string(),
+            participants: vec![
+                GroupCallParticipant {
+                    user_id: "u1".to_string(),
+                    user_name: "Alice".to_string(),
+                    is_muted: false,
+                },
+                GroupCallParticipant {
+                    user_id: "u2".to_string(),
+                    user_name: "Bob".to_string(),
+                    is_muted: true,
+                },
+            ],
+        });
+        let json = msg.to_json();
+        let parsed = WsMessage::from_json(&json).unwrap();
+        match parsed {
+            WsMessage::GroupCallParticipants(p) => {
+                assert_eq!(p.participants.len(), 2);
+                assert!(p.participants[1].is_muted);
+            }
+            _ => panic!("错误的消息类型"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_json_returns_error() {
+        let result = WsMessage::from_json("not valid json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unknown_type_returns_error() {
+        let result = WsMessage::from_json(r#"{"type":"unknown"}"#);
+        assert!(result.is_err());
+    }
+}
