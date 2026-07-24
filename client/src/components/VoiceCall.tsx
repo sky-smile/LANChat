@@ -21,7 +21,7 @@ interface VoiceCallProps {
 function VoiceCall({ onAccept, onReject, onHangup, onToggleMute, expanded }: VoiceCallProps) {
   const {
     callStatus, peerName, role, isMuted, connectedAt,
-    callType, groupName, participants,
+    callType, groupName,
   } = useCallStore();
   const [duration, setDuration] = useState('00:00');
   const isFirstMount = useRef(true);

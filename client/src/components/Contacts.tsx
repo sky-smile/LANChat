@@ -59,7 +59,7 @@ function Contacts() {
         status: (u.status as string) || 'offline',
       }));
       // 写入 contactsStore 以接收 WebSocket 实时更新
-      setStoreContacts(users.map((u) => ({
+      setStoreContacts(users.map((u: ContactItem) => ({
         id: u.id,
         username: u.username,
         displayName: u.displayName || '',
