@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { Input, Button, Avatar, Typography, Progress, message as antMessage, Dropdown } from 'antd';
-import { SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, PhoneOutlined, TeamOutlined, CopyOutlined, SearchOutlined, ContactsOutlined, CommentOutlined, SettingOutlined } from '@ant-design/icons';
+import {
+  SendOutlined, UserOutlined, PaperClipOutlined, FileOutlined, FileImageOutlined,
+  FilePdfOutlined, FileZipOutlined, FileTextOutlined, PhoneOutlined, TeamOutlined,
+  CopyOutlined, SearchOutlined, ContactsOutlined, CommentOutlined, SettingOutlined,
+} from '@ant-design/icons';
 import { useChatStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
-import { useWebSocket } from '@/hooks/useWebSocket';
+import { useNavStore } from '@/stores/nav';
 import { useWebRTCCapabilities } from '@/hooks/useWebRTC';
 import api from '@/services/api';
 import { getFileUrl } from '@/utils/format';
@@ -12,7 +16,33 @@ import './Chat.css';
 
 const { Text } = Typography;
 
-function Chat() {
+interface ChatProps {
+  sendMessage: (
+    receiverId: string,
+    receiverType: string,
+    content: string,
+    messageType?: string,
+    metadata?: Record<string, unknown>,
+  ) => string;
+  sendMarkRead: (senderId: string, receiverType?: string) => void;
+}
+
+/** 根据 MIME 类型或文件名返回对应的文件图标 */
+function getFileIcon(mimeType: string, fileName: string) {
+  const lowerMime = mimeType.toLowerCase();
+  const lowerName = fileName.toLowerCase();
+  if (lowerMime.startsWith('image/')) return FileImageOutlined;
+  if (lowerMime === 'application/pdf' || lowerName.endsWith('.pdf')) return FilePdfOutlined;
+  if (lowerMime.includes('zip') || lowerMime.includes('compressed') || /\.(zip|rar|7z|tar|gz)$/.test(lowerName)) {
+    return FileZipOutlined;
+  }
+  if (lowerMime.startsWith('text/') || /\.(txt|md|doc|docx|xls|xlsx|ppt|pptx)$/.test(lowerName)) {
+    return FileTextOutlined;
+  }
+  return FileOutlined;
+}
+
+function Chat({ sendMessage, sendMarkRead }: ChatProps) {
   const [inputValue, setInputValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -33,7 +63,7 @@ function Chat() {
   const currentUserId = useAuthStore((state) => state.user?.id);
   const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
   const [isGroupMember, setIsGroupMember] = useState<boolean | null>(null);
-  const { sendMessage, sendMarkRead } = useWebSocket();
+  const [groupDeleted, setGroupDeleted] = useState(false);
   const webRTC = useWebRTCCapabilities();
 
   const currentConv = conversations.find((c) => c.id === currentConversation);
@@ -85,7 +115,7 @@ function Chat() {
         const mapped = history.reverse().map((msg: Record<string, unknown>) => ({
           id: msg.id as string,
           senderId: msg.sender_id as string,
-          senderName: (msg.sender_display_name as string) || (msg.sender_name as string) || undefined,
+          senderName: (msg.sender_name as string) || (msg.sender_account as string) || undefined,
           receiverId: msg.receiver_id as string,
           receiverType: msg.receiver_type as 'user' | 'group',
           content: (msg.content as string) || '',
@@ -138,9 +168,51 @@ function Chat() {
     const conv = useChatStore.getState().conversations.find((c) => c.id === currentConversation);
     if (!conv) return;
 
+    // 如果会话已标记归档，直接显示已解散状态
+    if (conv.archived) {
+      setGroupDeleted(true);
+      setHasMore(true);
+      oldestMsgTimeRef.current = null;
+      // 归档会话仍然加载历史消息
+      const loadHistory = async () => {
+        try {
+          const resp = await api.get(`/messages/history/${currentConversation}/${conv.type}`, {
+            params: { limit: 50 },
+          });
+          const history = resp.data.data;
+          if (history && Array.isArray(history)) {
+            const mapped = history.reverse().map((msg: Record<string, unknown>) => ({
+              id: msg.id as string,
+              senderId: msg.sender_id as string,
+              senderName: (msg.sender_name as string) || (msg.sender_account as string) || undefined,
+              receiverId: msg.receiver_id as string,
+              receiverType: msg.receiver_type as 'user' | 'group',
+              content: (msg.content as string) || '',
+              messageType: msg.message_type as 'text' | 'image' | 'file' | 'system',
+              metadata: msg.metadata as Record<string, unknown> | undefined,
+              isRead: msg.is_read as boolean,
+              createdAt: msg.created_at as string,
+            }));
+            useChatStore.getState().setMessages(currentConversation, mapped);
+            if (mapped.length > 0) {
+              oldestMsgTimeRef.current = mapped[0].createdAt;
+            }
+            if (history.length < 50) {
+              setHasMore(false);
+            }
+          }
+        } catch {
+          // 归档群组历史消息加载失败，静默处理
+        }
+      };
+      loadHistory();
+      return;
+    }
+
     // 重置分页状态
     setHasMore(true);
     oldestMsgTimeRef.current = null;
+    setGroupDeleted(false);
 
     const loadHistory = async () => {
       try {
@@ -152,7 +224,7 @@ function Chat() {
           const mapped = history.reverse().map((msg: Record<string, unknown>) => ({
             id: msg.id as string,
             senderId: msg.sender_id as string,
-            senderName: (msg.sender_display_name as string) || (msg.sender_name as string) || undefined,
+            senderName: (msg.sender_name as string) || (msg.sender_account as string) || undefined,
             receiverId: msg.receiver_id as string,
             receiverType: msg.receiver_type as 'user' | 'group',
             content: (msg.content as string) || '',
@@ -171,38 +243,60 @@ function Chat() {
             setHasMore(false);
           }
         }
-      } catch (err) {
-        console.error('加载历史消息失败', err);
-      }
-    };
-
-    // 如果是群组会话且名称为占位符，获取群组真实名称
-    const fetchGroupInfo = async () => {
-      if (conv.type === 'group' && (conv.name === '加载中...' || conv.name.length === 36)) {
-        try {
-          const resp = await api.get(`/groups/${currentConversation}`);
-          const group = resp.data.data;
-          if (group?.name) {
-            useChatStore.getState().updateConversationName(currentConversation, group.name);
-            if (group.member_count) {
-              // 更新成员数量
-              const store = useChatStore.getState();
-              const updated = store.conversations.map((c) =>
-                c.id === currentConversation
-                  ? { ...c, groupMemberCount: group.member_count }
-                  : c,
-              );
-              useChatStore.setState({ conversations: updated });
-            }
-          }
-        } catch (err) {
-          console.error('获取群组信息失败', err);
+      } catch (err: unknown) {
+        // 非群组的 403/404 才视为异常，群组的由 fetchGroupInfo 统一处理
+        if (conv.type !== 'group') {
+          console.error('加载历史消息失败', err);
         }
       }
     };
 
+    // 群组会话：始终验证群组是否存在
+    const verifyGroup = async () => {
+      if (conv.type !== 'group') return;
+      try {
+        const resp = await api.get(`/groups/${currentConversation}`);
+        const group = resp.data.data;
+        if (group?.name) {
+          // 群组存在，更新名称和成员数
+          const store = useChatStore.getState();
+          const needsNameUpdate = conv.name === '加载中...' || conv.name.length === 36;
+          if (needsNameUpdate) {
+            store.updateConversationName(currentConversation, group.name);
+          }
+          if (group.member_count) {
+            const updated = store.conversations.map((c) =>
+              c.id === currentConversation
+                ? { ...c, groupMemberCount: group.member_count }
+                : c,
+            );
+            useChatStore.setState({ conversations: updated });
+          }
+        }
+      } catch (err: unknown) {
+        // 群组已解散（404）或无权访问（403）
+        if (err && typeof err === 'object' && 'response' in err) {
+          const axiosErr = err as { response?: { status?: number } };
+          const status = axiosErr.response?.status;
+          if (status === 403 || status === 404) {
+            setGroupDeleted(true);
+            // 标记会话为已归档
+            useChatStore.getState().archiveConversation(currentConversation);
+            // 更新会话名称（保留原名+已解散标识）
+            const originalName = conv.name.replace(/（已解散）$/, '');
+            useChatStore.getState().updateConversationName(
+              currentConversation,
+              `${originalName}（已解散）`,
+            );
+            return;
+          }
+        }
+        console.error('验证群组状态失败', err);
+      }
+    };
+
     loadHistory();
-    fetchGroupInfo();
+    verifyGroup();
   }, [currentConversation]);
 
   // 检查管理员是否为当前群组成员
@@ -258,7 +352,7 @@ function Chat() {
 
   const handleSend = () => {
     const text = inputValue.trim();
-    if (!text || !currentConversation || !currentConv) return;
+    if (!text || !currentConversation || !currentConv || groupDeleted) return;
     // 管理员非群成员禁止发送
     if (isGroup && isAdmin && isGroupMember === false) return;
 
@@ -402,16 +496,22 @@ function Chat() {
 
     if (msg.messageType === 'file' && msg.metadata?.fileId) {
       const fileId = msg.metadata.fileId as string;
+      const fileName = (msg.metadata.fileName as string) || '未知文件';
+      const mimeType = (msg.metadata.mimeType as string) || '';
       const fileSize = msg.metadata.fileSize as number;
       const sizeStr = fileSize > 1024 * 1024
         ? `${(fileSize / (1024 * 1024)).toFixed(1)} MB`
         : `${(fileSize / 1024).toFixed(1)} KB`;
 
+      const FileIcon = getFileIcon(mimeType, fileName);
+
       return (
         <div className="message-file" onClick={() => window.open(getFileUrl(fileId))}>
-          <FileOutlined className="file-icon" />
+          <div className="file-icon-wrap">
+            <FileIcon className="file-icon" />
+          </div>
           <div className="file-info">
-            <div className="file-name">{msg.metadata.fileName as string}</div>
+            <div className="file-name" title={fileName}>{fileName}</div>
             <div className="file-size">{sizeStr}</div>
           </div>
         </div>
@@ -461,6 +561,8 @@ function Chat() {
     return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' + time;
   };
 
+  const setActivePanel = useNavStore((state) => state.setActivePanel);
+
   if (!currentConversation) {
     return (
       <div className="chat-container">
@@ -471,13 +573,10 @@ function Chat() {
           <h3>欢迎使用 LANChat</h3>
           <p>选择一个聊天开始对话，或搜索联系人发起新会话</p>
           <div className="chat-empty-actions">
-            <Button icon={<SearchOutlined />} onClick={() => {
-              const searchInput = document.querySelector('.sidebar-search input') as HTMLInputElement;
-              searchInput?.focus();
-            }}>
-              搜索联系人
+            <Button icon={<SearchOutlined />} onClick={() => setActivePanel('contacts')}>
+              查找联系人
             </Button>
-            <Button icon={<ContactsOutlined />} onClick={() => window.location.href = '/contacts'}>
+            <Button icon={<ContactsOutlined />} onClick={() => setActivePanel('contacts')}>
               查看通讯录
             </Button>
           </div>
@@ -529,14 +628,10 @@ function Chat() {
       {/* 消息列表 */}
       <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         {loadingMore && (
-          <div style={{ textAlign: 'center', padding: '8px', color: '#999', fontSize: '12px' }}>
-            加载更多消息...
-          </div>
+          <div className="message-loading-more">加载更多消息...</div>
         )}
         {!hasMore && messages.length > 0 && (
-          <div style={{ textAlign: 'center', padding: '8px', color: '#999', fontSize: '12px' }}>
-            没有更多消息了
-          </div>
+          <div className="message-no-more">没有更多消息了</div>
         )}
         {messages.map((msg, idx) => {
           const isOwn = msg.senderId === currentUserId;
@@ -568,7 +663,7 @@ function Chat() {
                           minute: '2-digit',
                         })}
                       </span>
-                      {isOwn && (
+                      {isOwn && msg.receiverType !== 'group' && (
                         <span className={`message-status ${msg.isRead ? 'status-read' : 'status-sent'}`}>
                           {msg.isRead ? '已读' : '未读'}
                         </span>
@@ -596,9 +691,16 @@ function Chat() {
         </div>
       )}
 
+      {/* 群组已解散提示 */}
+      {isGroup && groupDeleted && (
+        <div className="admin-non-member-tip">
+          <Text type="warning">该群组已解散，无法发送消息。</Text>
+        </div>
+      )}
+
       {/* 管理员非成员提示 */}
-      {isGroup && isAdmin && isGroupMember === false && (
-        <div style={{ padding: '12px 16px', textAlign: 'center', background: '#fff7e6', borderTop: '1px solid #ffe58f' }}>
+      {isGroup && isAdmin && isGroupMember === false && !groupDeleted && (
+        <div className="admin-non-member-tip">
           <Text type="warning">您不是该群组的成员，无法发送消息。请在群组设置中添加自己为成员。</Text>
         </div>
       )}
@@ -614,23 +716,23 @@ function Chat() {
         <Button
           icon={<PaperClipOutlined />}
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading || (isGroup && isAdmin && isGroupMember === false)}
+          disabled={uploading || groupDeleted || (isGroup && isAdmin && isGroupMember === false)}
           title="发送文件"
         />
         <Input.TextArea
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isGroup && isAdmin && isGroupMember === false ? '您不是群组成员，无法发送消息' : '输入消息...'}
+          placeholder={groupDeleted ? '该群组已解散，无法发送消息' : (isGroup && isAdmin && isGroupMember === false ? '您不是群组成员，无法发送消息' : '输入消息...')}
           autoSize={{ minRows: 1, maxRows: 4 }}
           className="chat-textarea"
-          disabled={isGroup && isAdmin && isGroupMember === false}
+          disabled={groupDeleted || (isGroup && isAdmin && isGroupMember === false)}
         />
         <Button
           type="primary"
           icon={<SendOutlined />}
           onClick={handleSend}
-          disabled={!inputValue.trim() || uploading || (isGroup && isAdmin && isGroupMember === false)}
+          disabled={!inputValue.trim() || uploading || groupDeleted || (isGroup && isAdmin && isGroupMember === false)}
         >
           发送
         </Button>

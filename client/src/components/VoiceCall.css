@@ -1,37 +1,30 @@
-/* ===========================
-   语音通话 — 顶部悬浮条（居中紧凑浮动卡片）
-   =========================== */
-
-/* 外层容器：覆盖右侧面板区域，居中定位子元素 */
 .voice-call-bar-wrapper {
   position: fixed;
   top: 0;
-  left: 392px; /* NavRail(72px) + middle-panel(320px) */
+  left: calc(var(--nav-width) + var(--middle-panel-width));
   right: 0;
   z-index: 1000;
   display: flex;
   justify-content: center;
-  pointer-events: none; /* 容器不拦截点击 */
+  pointer-events: none;
 }
 
-/* 设置/管理页面：中间面板占满，悬浮条保持贴顶 */
 .voice-call-bar-wrapper-expanded {
-  left: 72px; /* 仅 NavRail 宽度 */
+  left: var(--nav-width);
 }
 
-/* 实际的悬浮条：紧凑居中卡片 */
 .voice-call-bar {
-  max-width: 400px;
-  width: calc(100% - 80px); /* 两侧各留40px */
-  pointer-events: auto; /* 卡片本身可交互 */
+  max-width: 420px;
+  width: calc(100% - var(--space-2xl) * 2);
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  padding: var(--space-sm) var(--space-md);
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-lg);
   animation: slideDown 0.3s ease;
-  border-radius: 0 0 8px 8px; /* 底部圆角 */
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
 }
 
 @keyframes slideDown {
@@ -39,7 +32,6 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* 呼叫/响铃中 — 脉冲动画边框 */
 .voice-call-bar-pulse {
   animation: slideDown 0.3s ease, barPulse 2s ease-in-out infinite;
 }
@@ -49,16 +41,14 @@
   50% { box-shadow: 0 4px 30px rgba(24, 144, 255, 0.5); }
 }
 
-/* 通话已结束 — 暗淡 */
 .voice-call-bar-ended {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
-/* ---- 左侧：头像 + 信息 ---- */
 .voice-call-bar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-md);
   min-width: 0;
 }
 
@@ -84,30 +74,30 @@
   line-height: 1.3;
 }
 
-/* ---- 右侧：操作按钮 ---- */
 .voice-call-bar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
   flex-shrink: 0;
 }
 
-/* 通话条按钮基础 */
 .call-bar-btn {
-  width: 32px !important;
-  height: 32px !important;
+  width: 34px !important;
+  height: 34px !important;
   font-size: 14px !important;
   border: none !important;
   transition: all 0.2s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .call-bar-btn:hover {
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 
-/* 接听 */
 .call-bar-btn-accept {
-  background: #52c41a !important;
+  background: var(--success-color) !important;
   color: #fff !important;
 }
 
@@ -115,10 +105,9 @@
   background: #73d13d !important;
 }
 
-/* 拒接/挂断 */
 .call-bar-btn-reject,
 .call-bar-btn-hangup {
-  background: #ff4d4f !important;
+  background: var(--error-color) !important;
   color: #fff !important;
 }
 
@@ -127,19 +116,19 @@
   background: #ff7875 !important;
 }
 
-/* 静音中 */
 .call-bar-btn-muted {
-  background: #faad14 !important;
+  background: var(--warning-color) !important;
   color: #fff !important;
 }
 
-/* 响应式 ---- */
 @media (max-width: 768px) {
   .voice-call-bar-wrapper {
-    left: 60px; /* 移动端导航栏可能折叠 */
+    left: var(--nav-width);
   }
+
   .voice-call-bar {
-    width: calc(100% - 32px); /* 移动端边距更小 */
-    max-width: 400px;
+    width: calc(100% - var(--space-lg));
+    max-width: none;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
   }
 }

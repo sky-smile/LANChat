@@ -109,3 +109,11 @@ pub async fn force_delete_group(
 ) -> Result<bool, sqlx::Error> {
     group_repository::force_delete_group(pool, group_id).await
 }
+
+/// 将用户加入系统默认群组
+pub async fn join_system_group(
+    pool: &PgPool,
+    user_id: &Uuid,
+) -> Result<Option<GroupMember>, sqlx::Error> {
+    group_repository::join_system_group(pool, user_id).await
+}

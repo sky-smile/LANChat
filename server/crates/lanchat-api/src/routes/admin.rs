@@ -50,8 +50,8 @@ async fn list_users(
     let (users, total) = if let Some(search) = &query.search {
         let pattern = format!("%{}%", search);
         let users = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, display_name, avatar_url, department, role, status, last_seen_at, created_at, updated_at \
-             FROM users WHERE username ILIKE $1 OR display_name ILIKE $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
+            "SELECT id, account, password_hash, name, avatar_url, department, role, status, last_seen_at, created_at, updated_at \
+             FROM users WHERE account ILIKE $1 OR name ILIKE $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
         )
         .bind(&pattern)
         .bind(page_size)
@@ -61,7 +61,7 @@ async fn list_users(
         .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
 
         let (total,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM users WHERE username ILIKE $1 OR display_name ILIKE $1"
+            "SELECT COUNT(*) FROM users WHERE account ILIKE $1 OR name ILIKE $1"
         )
         .bind(&pattern)
         .fetch_one(&state.db)
@@ -71,7 +71,7 @@ async fn list_users(
         (users, total)
     } else {
         let users = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, display_name, avatar_url, department, role, status, last_seen_at, created_at, updated_at \
+            "SELECT id, account, password_hash, name, avatar_url, department, role, status, last_seen_at, created_at, updated_at \
              FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2"
         )
         .bind(page_size)
@@ -97,18 +97,39 @@ async fn list_users(
 }
 
 /// 创建用户请求
+/// 字段映射：account（账户/手机号）对应原 username；name（姓名）对应原 display_name
 #[derive(serde::Deserialize)]
 struct CreateUserRequest {
-    username: String,
+    account: String,
     password: String,
-    display_name: Option<String>,
-    department: Option<String>,
-    role: Option<String>,
+    name: String,
+    department: String,
+    role: String,
 }
 
-/// 将空字符串转换为 None
-fn empty_to_none(opt: Option<String>) -> Option<String> {
-    opt.filter(|s| !s.trim().is_empty())
+/// 校验创建/编辑用户必填字段
+fn validate_user_fields(account: &str, password: &str, name: &str, department: &str, role: &str) -> Result<(), ApiError> {
+    // 超级管理员账户跳过手机号校验
+    if account != PROTECTED_ADMIN {
+        let re = regex::Regex::new(r"^1[3-9]\d{9}$")
+            .map_err(|e| ApiError::InternalError(format!("手机号正则编译失败: {}", e)))?;
+        if !re.is_match(account) {
+            return Err(ApiError::ValidationError("账户必须是有效的11位手机号".to_string()));
+        }
+    }
+    if password.len() < 6 {
+        return Err(ApiError::ValidationError("密码至少6位".to_string()));
+    }
+    if name.trim().is_empty() {
+        return Err(ApiError::ValidationError("姓名不能为空".to_string()));
+    }
+    if department.trim().is_empty() {
+        return Err(ApiError::ValidationError("部门不能为空".to_string()));
+    }
+    if role != "user" && role != "admin" {
+        return Err(ApiError::ValidationError("角色无效".to_string()));
+    }
+    Ok(())
 }
 
 /// 创建用户
@@ -116,33 +137,31 @@ async fn create_user(
     State(state): State<AppState>,
     Json(req): Json<CreateUserRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<User>>), AppError> {
-    // 检查用户名是否已存在
-    if lanchat_core::repository::user_repository::find_by_username(&state.db, &req.username)
+    validate_user_fields(&req.account, &req.password, &req.name, &req.department, &req.role)?;
+
+    // 检查账户是否已存在
+    if lanchat_core::repository::user_repository::find_by_account(&state.db, &req.account)
         .await
         .map_err(|e| AppError(ApiError::DatabaseError(e)))?
         .is_some()
     {
-        return Err(AppError(ApiError::ValidationError("用户名已存在".to_string())));
+        return Err(AppError(ApiError::ValidationError("该手机号已注册".to_string())));
     }
 
     // 哈希密码
     let password_hash = lanchat_common::auth::hash_password(&req.password)?;
 
-    // 空字符串转为 None
-    let display_name = empty_to_none(req.display_name);
-    let department = empty_to_none(req.department);
-
     // 创建用户
     let user = sqlx::query_as::<_, User>(
-        "INSERT INTO users (username, password_hash, display_name, department, role) \
+        "INSERT INTO users (account, password_hash, name, department, role) \
          VALUES ($1, $2, $3, $4, $5) \
-         RETURNING id, username, password_hash, display_name, avatar_url, department, role, status, last_seen_at, created_at, updated_at"
+         RETURNING id, account, password_hash, name, avatar_url, department, role, status, last_seen_at, created_at, updated_at"
     )
-    .bind(&req.username)
+    .bind(&req.account)
     .bind(&password_hash)
-    .bind(&display_name)
-    .bind(&department)
-    .bind(req.role.unwrap_or_else(|| "user".to_string()))
+    .bind(&req.name)
+    .bind(&req.department)
+    .bind(&req.role)
     .fetch_one(&state.db)
     .await
     .map_err(|e| AppError(ApiError::DatabaseError(e)))?;
@@ -164,9 +183,11 @@ async fn get_user(
 }
 
 /// 更新用户请求
+/// 字段映射：account（账户/手机号）对应原 username；name（姓名）对应原 display_name
 #[derive(serde::Deserialize)]
 struct UpdateUserRequest {
-    display_name: Option<String>,
+    account: Option<String>,
+    name: Option<String>,
     department: Option<String>,
     role: Option<String>,
 }
@@ -184,25 +205,55 @@ async fn update_user(
         .ok_or(AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
     // 超级管理员的角色不可修改
-    if existing.username == PROTECTED_ADMIN && req.role.is_some() && req.role.as_deref() != Some("admin") {
+    if existing.account == PROTECTED_ADMIN && req.role.is_some() && req.role.as_deref() != Some("admin") {
         return Err(AppError(ApiError::ValidationError("超级管理员角色不可修改".to_string())));
     }
 
-    // 空字符串转为 None
-    let display_name = empty_to_none(req.display_name);
-    let department = empty_to_none(req.department);
+    // 若修改账户，校验格式并检查唯一性（超级管理员跳过手机号校验）
+    if let Some(ref account) = req.account {
+        if account != PROTECTED_ADMIN {
+            let re = regex::Regex::new(r"^1[3-9]\d{9}$")
+                .map_err(|e| AppError(ApiError::InternalError(format!("手机号正则编译失败: {}", e))))?;
+            if !re.is_match(account) {
+                return Err(AppError(ApiError::ValidationError("账户必须是有效的11位手机号".to_string())));
+            }
+        }
+        if account != &existing.account {
+            if lanchat_core::repository::user_repository::find_by_account(&state.db, account)
+                .await
+                .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+                .is_some()
+            {
+                return Err(AppError(ApiError::ValidationError("该手机号已注册".to_string())));
+            }
+        }
+    }
 
-    let user = sqlx::query_as::<_, User>(
-        "UPDATE users SET display_name = COALESCE($2, display_name), \
-         department = COALESCE($3, department), role = COALESCE($4, role), \
-         updated_at = NOW() WHERE id = $1 \
-         RETURNING id, username, password_hash, display_name, avatar_url, department, role, status, last_seen_at, created_at, updated_at"
+    // 字段非空校验（传值时）
+    if let Some(ref name) = req.name {
+        if name.trim().is_empty() {
+            return Err(AppError(ApiError::ValidationError("姓名不能为空".to_string())));
+        }
+    }
+    if let Some(ref department) = req.department {
+        if department.trim().is_empty() {
+            return Err(AppError(ApiError::ValidationError("部门不能为空".to_string())));
+        }
+    }
+    if let Some(ref role) = req.role {
+        if role != "user" && role != "admin" {
+            return Err(AppError(ApiError::ValidationError("角色无效".to_string())));
+        }
+    }
+
+    let user = lanchat_core::repository::user_repository::update_user(
+        &state.db,
+        &user_id,
+        req.account.as_deref(),
+        req.name.as_deref(),
+        req.department.as_deref(),
+        req.role.as_deref(),
     )
-    .bind(user_id)
-    .bind(&display_name)
-    .bind(&department)
-    .bind(&req.role)
-    .fetch_optional(&state.db)
     .await
     .map_err(|e| AppError(ApiError::DatabaseError(e)))?
     .ok_or(AppError(ApiError::NotFound("用户不存在".to_string())))?;
@@ -210,7 +261,7 @@ async fn update_user(
     Ok(Json(ApiResponse::success(user)))
 }
 
-/// 受保护的超级管理员用户名
+/// 受保护的超级管理员账户
 const PROTECTED_ADMIN: &str = "admin";
 
 /// 删除用户
@@ -224,7 +275,7 @@ async fn delete_user(
         .map_err(|e| AppError(ApiError::DatabaseError(e)))?
         .ok_or(AppError(ApiError::NotFound("用户不存在".to_string())))?;
 
-    if user.username == PROTECTED_ADMIN {
+    if user.account == PROTECTED_ADMIN {
         return Err(AppError(ApiError::ValidationError("超级管理员账户不可删除".to_string())));
     }
 

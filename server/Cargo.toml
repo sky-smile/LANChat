@@ -57,6 +57,7 @@ dotenvy = "0.15"
 # 工具
 rand = "0.8"
 futures-util = "0.3"
+regex = "1"
 
 # 文件处理
 image = "0.25"

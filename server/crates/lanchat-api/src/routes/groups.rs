@@ -137,6 +137,7 @@ async fn get_group_handler(
         "created_at": group.created_at,
         "member_count": member_count,
         "can_manage": can_manage,
+        "is_system": group.is_system,
     });
 
     Ok(Json(ApiResponse::success(result)))
@@ -220,13 +221,14 @@ async fn list_user_groups_handler(
             "avatar_url": group.avatar_url,
             "member_count": member_count,
             "is_member": is_member,
+            "is_system": group.is_system,
         }));
     }
 
     Ok(Json(ApiResponse::success(result)))
 }
 
-/// 删除群组（管理员可删除任意群组，普通用户只能删除自己创建的）
+/// 删除群组（管理员可删除任意非系统群组，普通用户只能删除自己创建的）
 async fn delete_group_handler(
     State(state): State<AppState>,
     axum::extract::Extension(user_id): axum::extract::Extension<String>,
@@ -236,6 +238,15 @@ async fn delete_group_handler(
         .map_err(|_| AppError(ApiError::ValidationError("无效的用户ID".to_string())))?;
     let gid = Uuid::parse_str(&group_id)
         .map_err(|_| AppError(ApiError::ValidationError("无效的群组ID".to_string())))?;
+
+    // 系统群组不允许删除
+    let group = lanchat_core::services::group::get_group(&state.db, &gid)
+        .await
+        .map_err(|e| AppError(ApiError::DatabaseError(e)))?
+        .ok_or_else(|| AppError(ApiError::NotFound("群组不存在".to_string())))?;
+    if group.is_system {
+        return Err(AppError(ApiError::ValidationError("系统群组不允许删除".to_string())));
+    }
 
     // 检查是否为管理员
     let user = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
@@ -264,8 +275,8 @@ async fn delete_group_handler(
 #[derive(serde::Serialize)]
 struct MemberInfo {
     id: String,
-    username: String,
-    display_name: Option<String>,
+    account: String,
+    name: String,
     avatar_url: Option<String>,
     role: String,
     status: String,
@@ -305,8 +316,8 @@ async fn get_members_handler(
         .into_iter()
         .map(|(gm, u)| MemberInfo {
             id: u.id.to_string(),
-            username: u.username,
-            display_name: u.display_name,
+            account: u.account,
+            name: u.name,
             avatar_url: u.avatar_url,
             role: gm.role,
             status: u.status,

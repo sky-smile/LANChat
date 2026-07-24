@@ -11,6 +11,7 @@ import {
   Popconfirm,
   Tag,
   Avatar,
+  Card,
 } from 'antd';
 import {
   PlusOutlined,
@@ -27,10 +28,10 @@ import './Admin.css';
 
 interface AdminUser {
   id: string;
-  username: string;
-  display_name: string | null;
+  account: string;
+  name: string;
   avatar_url: string | null;
-  department: string | null;
+  department: string;
   role: string;
   status: string;
   created_at: string;
@@ -71,19 +72,7 @@ function Admin() {
     return map;
   }, [contacts]);
 
-  // 编辑弹窗打开后设置表单初始值
-  useEffect(() => {
-    if (editModalOpen && editingUser) {
-      // 使用 setTimeout 确保 Form 已挂载
-      setTimeout(() => {
-        editForm.setFieldsValue({
-          display_name: editingUser.display_name || '',
-          department: editingUser.department || '',
-          role: editingUser.role,
-        });
-      }, 0);
-    }
-  }, [editModalOpen, editingUser, editForm]);
+
 
   // 加载用户列表
   const fetchUsers = useCallback(async () => {
@@ -93,11 +82,13 @@ function Admin() {
       if (search) params.search = search;
       const resp = await api.get<{ code: number; data: UserListResponse }>('/admin/users', { params });
       if (resp.data.code === 0) {
-        // 超级管理员置顶
+        // 超级管理员账户置顶，其余管理员其次，普通用户按创建时间倒序
         const sorted = [...resp.data.data.users].sort((a, b) => {
-          if (a.username === 'admin') return -1;
-          if (b.username === 'admin') return 1;
-          return 0;
+          if (a.account === 'admin') return -1;
+          if (b.account === 'admin') return 1;
+          if (a.role === 'admin' && b.role !== 'admin') return -1;
+          if (a.role !== 'admin' && b.role === 'admin') return 1;
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         });
         setUsers(sorted);
         setTotal(resp.data.data.total);
@@ -115,7 +106,7 @@ function Admin() {
   }, [fetchUsers]);
 
   // 创建用户
-  const handleCreate = async (values: { username: string; password: string; display_name?: string; department?: string; role?: string }) => {
+  const handleCreate = async (values: { account: string; password: string; name: string; department: string; role: string }) => {
     try {
       const resp = await api.post('/admin/users', values);
       if (resp.data.code === 0) {
@@ -123,15 +114,24 @@ function Admin() {
         setCreateModalOpen(false);
         createForm.resetFields();
         fetchUsers();
+      } else {
+        message.error(resp.data.message || '创建失败');
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } };
-      message.error(error.response?.data?.message || '创建失败');
+      const error = err as {
+        response?: {
+          data?: { message?: string; error?: { message?: string } };
+        };
+      };
+      const msg = error.response?.data?.message
+        || error.response?.data?.error?.message
+        || '创建失败';
+      message.error(msg);
     }
   };
 
   // 编辑用户
-  const handleEdit = async (values: { display_name?: string; department?: string; role?: string }) => {
+  const handleEdit = async (values: { account: string; name: string; department: string; role: string }) => {
     if (!editingUser) return;
     try {
       const resp = await api.put(`/admin/users/${editingUser.id}`, values);
@@ -140,10 +140,19 @@ function Admin() {
         setEditModalOpen(false);
         editForm.resetFields();
         fetchUsers();
+      } else {
+        message.error(resp.data.message || '更新失败');
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } };
-      message.error(error.response?.data?.message || '更新失败');
+      const error = err as {
+        response?: {
+          data?: { message?: string; error?: { message?: string } };
+        };
+      };
+      const msg = error.response?.data?.message
+        || error.response?.data?.error?.message
+        || '更新失败';
+      message.error(msg);
     }
   };
 
@@ -156,8 +165,15 @@ function Admin() {
         fetchUsers();
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } };
-      message.error(error.response?.data?.message || '删除失败');
+      const error = err as {
+        response?: {
+          data?: { message?: string; error?: { message?: string } };
+        };
+      };
+      const msg = error.response?.data?.message
+        || error.response?.data?.error?.message
+        || '删除失败';
+      message.error(msg);
     }
   };
 
@@ -170,10 +186,19 @@ function Admin() {
         message.success('密码已重置');
         setPasswordModalOpen(false);
         passwordForm.resetFields();
+      } else {
+        message.error(resp.data.message || '重置失败');
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } };
-      message.error(error.response?.data?.message || '重置失败');
+      const error = err as {
+        response?: {
+          data?: { message?: string; error?: { message?: string } };
+        };
+      };
+      const msg = error.response?.data?.message
+        || error.response?.data?.error?.message
+        || '重置失败';
+      message.error(msg);
     }
   };
 
@@ -190,30 +215,34 @@ function Admin() {
 
   const columns = [
     {
-      title: '用户',
-      key: 'user',
-      render: (_: unknown, record: AdminUser) => (
+      title: '姓名',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string, record: AdminUser) => (
         <Space>
           <Avatar icon={<UserOutlined />} src={record.avatar_url} size={32} />
-          <div>
-            <div style={{ fontWeight: 500 }}>{record.display_name || record.username}</div>
-            <div style={{ fontSize: 12, color: '#999' }}>@{record.username}</div>
-          </div>
+          <span style={{ fontWeight: 500 }}>{name || '-'}</span>
         </Space>
       ),
+    },
+    {
+      title: '账户',
+      dataIndex: 'account',
+      key: 'account',
+      render: (account: string) => account || '-',
     },
     {
       title: '部门',
       dataIndex: 'department',
       key: 'department',
-      render: (dept: string | null) => dept || '-',
+      render: (dept: string) => dept || '-',
     },
     {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
       render: (role: string, record: AdminUser) => {
-        if (record.username === 'admin') {
+        if (record.account === 'admin') {
           return <Tag color="gold">超级管理员</Tag>;
         }
         return (
@@ -258,7 +287,7 @@ function Admin() {
       title: '操作',
       key: 'actions',
       render: (_: unknown, record: AdminUser) => {
-        const isProtected = record.username === 'admin';
+        const isProtected = record.account === 'admin';
         return (
           <Space>
             <Button
@@ -293,37 +322,43 @@ function Admin() {
 
   return (
     <div className="admin-page">
-      <div className="admin-header">
-        <h2><TeamOutlined /> 用户管理</h2>
-        <Space>
-          <Input
-            placeholder="搜索用户..."
-            prefix={<SearchOutlined />}
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            allowClear
-            style={{ width: 240 }}
-          />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-            创建用户
-          </Button>
-        </Space>
+      <div className="panel-header">
+        <h2>用户管理</h2>
       </div>
+      <div className="admin-content">
+        <Card className="admin-card">
+          <div className="admin-header">
+            <h2><TeamOutlined /> 用户列表</h2>
+            <Space>
+              <Input
+                className="admin-search"
+                placeholder="搜索用户..."
+                prefix={<SearchOutlined />}
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                allowClear
+              />
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+                创建用户
+              </Button>
+            </Space>
+          </div>
 
-      <Table
-        columns={columns}
-        dataSource={users}
-        rowKey="id"
-        loading={loading}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          showTotal: (t) => `共 ${t} 个用户`,
-          onChange: (p, ps) => { setPage(p); setPageSize(ps); },
-        }}
-      />
+          <Table
+            columns={columns}
+            dataSource={users}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              showTotal: (t) => `共 ${t} 个用户`,
+              onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+            }}
+          />
+        </Card>
 
       {/* 创建用户弹窗 */}
       <Modal
@@ -334,19 +369,25 @@ function Admin() {
         destroyOnClose
       >
         <Form form={createForm} onFinish={handleCreate} layout="vertical">
-          <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input placeholder="英文字母和数字" />
+          <Form.Item
+            name="account"
+            label="账户"
+            rules={[
+              { required: true, message: '请输入账户' },
+            ]}
+          >
+            <Input placeholder="手机号或自定义账户名" />
           </Form.Item>
           <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
             <Input.Password placeholder="初始密码" />
           </Form.Item>
-          <Form.Item name="display_name" label="显示名称">
-            <Input placeholder="可选" />
+          <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
+            <Input placeholder="真实姓名" />
           </Form.Item>
-          <Form.Item name="department" label="部门">
-            <Input placeholder="可选" />
+          <Form.Item name="department" label="部门" rules={[{ required: true, message: '请输入部门' }]}>
+            <Input placeholder="所属部门" />
           </Form.Item>
-          <Form.Item name="role" label="角色" initialValue="user">
+          <Form.Item name="role" label="角色" initialValue="user" rules={[{ required: true, message: '请选择角色' }]}>
             <Select options={[{ value: 'user', label: '用户' }, { value: 'admin', label: '管理员' }]} />
           </Form.Item>
           <Form.Item>
@@ -366,17 +407,32 @@ function Admin() {
         footer={null}
         destroyOnClose
       >
-        <Form form={editForm} onFinish={handleEdit} layout="vertical">
-          <Form.Item name="display_name" label="显示名称">
+        <Form
+          form={editForm}
+          onFinish={handleEdit}
+          layout="vertical"
+          initialValues={editingUser || {}}
+          preserve={false}
+        >
+          <Form.Item
+            name="account"
+            label="账户"
+            rules={[
+              { required: true, message: '请输入账户' },
+            ]}
+          >
+            <Input disabled={editingUser?.account === 'admin'} />
+          </Form.Item>
+          <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="department" label="部门">
+          <Form.Item name="department" label="部门" rules={[{ required: true, message: '请输入部门' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="role" label="角色">
+          <Form.Item name="role" label="角色" rules={[{ required: true, message: '请选择角色' }]}>
             <Select
               options={[{ value: 'user', label: '用户' }, { value: 'admin', label: '管理员' }]}
-              disabled={editingUser?.username === 'admin'}
+              disabled={editingUser?.role === 'admin'}
             />
           </Form.Item>
           <Form.Item>
@@ -390,7 +446,7 @@ function Admin() {
 
       {/* 重置密码弹窗 */}
       <Modal
-        title={`重置密码 - ${editingUser?.display_name || editingUser?.username}`}
+        title={`重置密码 - ${editingUser?.name || editingUser?.account}`}
         open={passwordModalOpen}
         onCancel={() => setPasswordModalOpen(false)}
         footer={null}
@@ -408,6 +464,7 @@ function Admin() {
           </Form.Item>
         </Form>
       </Modal>
+      </div>
     </div>
   );
 }

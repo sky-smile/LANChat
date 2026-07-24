@@ -22,7 +22,7 @@ describe('useChatStore', () => {
       messages: {},
     });
     useAuthStore.setState({
-      user: { id: 'u1', username: 'alice', displayName: 'Alice', role: 'user', status: 'online' },
+      user: { id: 'u1', account: 'alice', name: 'Alice', department: '测试部', role: 'user', status: 'online' },
     });
   });
 

@@ -35,8 +35,8 @@ function Layout() {
     }
   }, [isAuthenticated, updateUserStatus]);
 
-  // 初始化 WebSocket 连接
-  useWebSocket(wsRef);
+  // 初始化 WebSocket 连接（共享 wsRef）
+  const { sendMessage, sendMarkRead } = useWebSocket(wsRef);
 
   // 初始化 WebRTC（内部自动注册信令处理器到 callSignalingBus）
   const { capabilities, acceptCall, rejectCall, hangup, toggleMute } = useWebRTC(wsRef);
@@ -62,7 +62,7 @@ function Layout() {
         {/* 右列：聊天窗口（设置和管理时隐藏） */}
         {!hideChatPanel && (
           <div className="right-panel">
-            <Chat />
+            <Chat sendMessage={sendMessage} sendMarkRead={sendMarkRead} />
           </div>
         )}
 

@@ -240,7 +240,7 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
     const cid = `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const userId = useAuthStore.getState().user?.id || '';
     const currentUser = useAuthStore.getState().user;
-    const userName = currentUser?.displayName || currentUser?.username || '';
+    const userName = currentUser?.name || currentUser?.account || '';
 
     console.log('[WebRTC] 发起通话:', cid, '目标:', targetPeerId);
     useCallStore.getState().startCall(cid, targetPeerId, targetPeerName);
@@ -273,7 +273,7 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
   const createGroupCall = useCallback(async (groupId: string, groupName: string) => {
     const cid = `group_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const userId = useAuthStore.getState().user?.id || '';
-    const userName = useAuthStore.getState().user?.displayName || '';
+    const userName = useAuthStore.getState().user?.name || '';
 
     console.log('[WebRTC] 创建群组通话:', cid, '群组:', groupId);
 
@@ -299,7 +299,7 @@ export function useWebRTC(wsRef: React.MutableRefObject<WebSocket | null>) {
 
   /** 加入群组通话 */
   const joinGroupCall = useCallback(async (callId: string, groupId: string, groupName: string) => {
-    const userName = useAuthStore.getState().user?.displayName || '';
+    const userName = useAuthStore.getState().user?.name || '';
 
     console.log('[WebRTC] 加入群组通话:', callId);
 

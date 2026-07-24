@@ -4,13 +4,71 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* 主色板 */
+  --primary-color: #1890ff;
+  --primary-hover: #40a9ff;
+  --primary-active: #096dd9;
+  --success-color: #52c41a;
+  --warning-color: #faad14;
+  --error-color: #ff4d4f;
+
+  /* 中性色 */
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #fafafa;
+  --border-color: #e8e8e8;
+  --border-light: #f0f0f0;
+  --text-primary: #262626;
+  --text-secondary: #595959;
+  --text-tertiary: #8c8c8c;
+  --text-disabled: #bfbfbf;
+
+  /* 导航栏 */
+  --nav-bg: #001529;
+  --nav-text: rgba(255, 255, 255, 0.85);
+  --nav-text-active: #ffffff;
+  --nav-hover: rgba(255, 255, 255, 0.12);
+  --nav-active: rgba(24, 144, 255, 0.25);
+  --nav-width: 72px;
+
+  /* 中间面板 */
+  --middle-panel-width: 320px;
+  --middle-panel-min: 280px;
+  --middle-panel-max: 400px;
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* 字体 */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+}
+
 html,
 body,
 #root {
   height: 100%;
   width: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif;
+  font-family: var(--font-family);
+  color: var(--text-primary);
+  background: var(--bg-primary);
 }
 
 /* 自定义滚动条 */
@@ -24,10 +82,142 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: rgba(0, 0, 0, 0.18);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: rgba(0, 0, 0, 0.28);
+}
+
+/* 通用面板标题 */
+.panel-header {
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+/* 通用搜索框 */
+.panel-search {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.panel-search .ant-input-affix-wrapper {
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  border-color: var(--border-light);
+  transition: all 0.2s;
+}
+
+.panel-search .ant-input-affix-wrapper:hover,
+.panel-search .ant-input-affix-wrapper-focused {
+  background: var(--bg-secondary);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+}
+
+.panel-search .ant-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.panel-search .ant-input-prefix {
+  color: var(--text-tertiary);
+}
+
+/* 通用空状态 */
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2xl) var(--space-lg);
+  color: var(--text-tertiary);
+  font-size: 13px;
+  text-align: center;
+  gap: var(--space-sm);
+}
+
+.panel-empty .ant-empty-image {
+  height: 60px;
+}
+
+/* 通用列表项 */
+.list-item-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 0;
+}
+
+.list-item-card:hover {
+  background: var(--bg-tertiary);
+}
+
+.list-item-card.active {
+  background: #e6f7ff;
+  border-left: 3px solid var(--primary-color);
+}
+
+/* 状态点 */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.online {
+  background: var(--success-color);
+}
+
+.status-dot.offline {
+  background: #d9d9d9;
+}
+
+.status-dot.away {
+  background: var(--warning-color);
+}
+
+.status-dot.busy {
+  background: var(--error-color);
+}
+
+/* 头像状态点 */
+.avatar-status-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-secondary);
+}
+
+.avatar-status-dot.online {
+  background: var(--success-color);
+}
+
+.avatar-status-dot.offline {
+  background: #d9d9d9;
+}
+
+.avatar-status-dot.away {
+  background: var(--warning-color);
+}
+
+.avatar-status-dot.busy {
+  background: var(--error-color);
 }

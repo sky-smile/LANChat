@@ -12,10 +12,10 @@ import './Contacts.css';
 
 interface ContactItem {
   id: string;
-  username: string;
-  displayName?: string;
+  account: string;
+  name: string;
   avatarUrl?: string;
-  department?: string;
+  department: string;
   status: string;
 }
 
@@ -38,8 +38,8 @@ function Contacts() {
       })
     : storeContacts.map((c) => ({
         id: c.id,
-        username: c.username,
-        displayName: c.displayName,
+        account: c.account,
+        name: c.name,
         avatarUrl: c.avatar,
         department: c.department,
         status: c.status,
@@ -52,17 +52,17 @@ function Contacts() {
       const resp = await api.get('/auth/users');
       const users = (resp.data.data || []).map((u: Record<string, unknown>) => ({
         id: u.id as string,
-        username: u.username as string,
-        displayName: (u.display_name as string) || '',
+        account: u.account as string,
+        name: (u.name as string) || '',
         avatarUrl: u.avatar_url as string | undefined,
-        department: u.department as string | undefined,
+        department: (u.department as string) || '',
         status: (u.status as string) || 'offline',
       }));
       // 写入 contactsStore 以接收 WebSocket 实时更新
       setStoreContacts(users.map((u: ContactItem) => ({
         id: u.id,
-        username: u.username,
-        displayName: u.displayName || '',
+        account: u.account,
+        name: u.name || '',
         avatar: u.avatarUrl,
         department: u.department,
         status: u.status as 'online' | 'away' | 'busy' | 'offline',
@@ -86,10 +86,10 @@ function Contacts() {
       const resp = await api.get('/auth/search', { params: { q: query.trim(), limit: 50 } });
       const users = (resp.data.data || []).map((u: Record<string, unknown>) => ({
         id: u.id as string,
-        username: u.username as string,
-        displayName: (u.display_name as string) || '',
+        account: u.account as string,
+        name: (u.name as string) || '',
         avatarUrl: u.avatar_url as string | undefined,
-        department: u.department as string | undefined,
+        department: (u.department as string) || '',
         status: (u.status as string) || 'offline',
       }));
       setSearchResults(users);
@@ -116,7 +116,7 @@ function Contacts() {
   const startChat = (contact: ContactItem) => {
     addConversation({
       id: contact.id,
-      name: contact.displayName || contact.username,
+      name: contact.name || contact.account,
       avatar: contact.avatarUrl,
       unreadCount: 0,
       type: 'user',
@@ -144,7 +144,9 @@ function Contacts() {
         {loading ? (
           <div className="contacts-loading"><Spin /></div>
         ) : displayContacts.length === 0 ? (
-          <Empty description={searchQuery.trim() ? "未找到联系人" : "暂无联系人"} />
+          <div className="panel-empty">
+            <Empty description={searchQuery.trim() ? "未找到联系人" : "暂无联系人"} />
+          </div>
         ) : (
           <List
             dataSource={displayContacts}
@@ -152,9 +154,9 @@ function Contacts() {
               <div className="contact-item" onClick={() => startChat(contact)}>
                 <Avatar icon={<UserOutlined />} src={contact.avatarUrl} />
                 <div className="contact-info">
-                  <div className="contact-name">{contact.displayName || contact.username}</div>
+                  <div className="contact-name">{contact.name || contact.account}</div>
                   <div className="contact-meta">
-                    <span className="contact-username">@{contact.username}</span>
+                    <span className="contact-username">@{contact.account}</span>
                     {contact.department && <span className="contact-dept">{contact.department}</span>}
                   </div>
                 </div>

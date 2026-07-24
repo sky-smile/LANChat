@@ -1,4 +1,4 @@
-import { Avatar, Dropdown, Badge } from 'antd';
+import { Avatar, Dropdown, Badge, Tooltip } from 'antd';
 import {
   MessageOutlined,
   ContactsOutlined,
@@ -59,10 +59,35 @@ function NavRail() {
 
   return (
     <div className="nav-rail">
-      {/* 用户信息 */}
-      <div className="nav-rail-user">
+      {/* 应用 Logo */}
+      <div className="nav-rail-brand">
+        <div className="nav-rail-logo">
+          <MessageOutlined />
+        </div>
+      </div>
+
+      {/* 导航按钮 */}
+      <nav className="nav-rail-items">
+        {navItems.map((item) => (
+          <Tooltip key={item.key} title={item.label} placement="right">
+            <div
+              className={`nav-rail-item ${activePanel === item.key ? 'active' : ''}`}
+              onClick={() => setActivePanel(item.key)}
+              aria-label={item.label}
+            >
+              <Badge count={item.badge} size="small" offset={[-2, 2]}>
+                <span className="nav-rail-icon">{item.icon}</span>
+              </Badge>
+              <span className="nav-rail-label">{item.label}</span>
+            </div>
+          </Tooltip>
+        ))}
+      </nav>
+
+      {/* 底部用户信息 */}
+      <div className="nav-rail-footer">
         <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
-          <div className="nav-rail-user-info">
+          <div className="nav-rail-user" title={user?.name || user?.account}>
             <div className="nav-rail-avatar-wrap">
               <Avatar
                 size={36}
@@ -72,43 +97,11 @@ function NavRail() {
               />
               <span className={`nav-rail-status-dot ${user?.status || 'offline'}`} />
             </div>
-            <span className="nav-rail-username" title={user?.displayName || user?.username}>
-              {user?.displayName || user?.username}
-            </span>
+            {user?.account && (
+              <div className="nav-rail-username">{user.name || user.account}</div>
+            )}
           </div>
         </Dropdown>
-      </div>
-
-      {/* 导航按钮 */}
-      <div className="nav-rail-items">
-        {navItems.map((item) => (
-          <div
-            key={item.key}
-            className={`nav-rail-item ${activePanel === item.key ? 'active' : ''}`}
-            onClick={() => setActivePanel(item.key)}
-            title={item.label}
-          >
-            <Badge count={item.badge} size="small" offset={[-4, 4]}>
-              <span className="nav-rail-icon">{item.icon}</span>
-            </Badge>
-            <span className="nav-rail-label">{item.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* 底部退出 */}
-      <div className="nav-rail-footer">
-        <div
-          className="nav-rail-item"
-          onClick={() => {
-            logout();
-            navigate('/login');
-          }}
-          title="退出登录"
-        >
-          <span className="nav-rail-icon"><LogoutOutlined /></span>
-          <span className="nav-rail-label">退出</span>
-        </div>
       </div>
     </div>
   );

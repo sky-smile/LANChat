@@ -1,9 +1,11 @@
 export interface User {
   id: string;
-  username: string;
-  displayName: string;
+  /** 账户/手机号（对应原 username） */
+  account: string;
+  /** 姓名（对应原 displayName） */
+  name: string;
   avatarUrl?: string;
-  department?: string;
+  department: string;
   role: string;
   status: string;
   lastSeenAt?: string;
@@ -20,6 +22,8 @@ export interface Group {
   maxMembers: number;
   createdBy: string;
   createdAt: string;
+  /** 是否为系统默认群组（如公司大群，不可删除） */
+  isSystem: boolean;
 }
 
 export interface Message {

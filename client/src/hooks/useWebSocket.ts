@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { message as antMessage } from 'antd';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { useContactsStore } from '@/stores/contacts';
@@ -216,6 +217,27 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
 
       case 'error':
         console.error('[WS] 错误', msg.payload);
+        {
+          const p = msg.payload as Record<string, unknown> | undefined;
+          const errMsg = p?.message as string | undefined;
+          const errCode = p?.code as string | undefined;
+          if (errMsg) {
+            antMessage.error(errMsg);
+          }
+          // 群组已解散时，归档会话（保留历史消息）
+          if (errCode === 'group_deleted') {
+            const store = useChatStore.getState();
+            const currentConv = store.currentConversation;
+            if (currentConv) {
+              store.archiveConversation(currentConv);
+              const conv = store.conversations.find((c) => c.id === currentConv);
+              if (conv) {
+                const originalName = conv.name.replace(/（已解散）$/, '');
+                store.updateConversationName(currentConv, `${originalName}（已解散）`);
+              }
+            }
+          }
+        }
         break;
 
       // 通话信令消息：转发给 useWebRTC 处理
@@ -225,6 +247,7 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
       case 'call_answer':
       case 'call_ice':
       // 群组通话信令
+      // fallthrough
       case 'group_call_participants':
       case 'group_call_ended':
         console.log('[WS] 收到通话信令:', msg.type, msg.payload);
@@ -358,7 +381,7 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
         wsRef.current = null;
       }
     };
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, wsRef]);
 
   // 刷新待发送消息队列
   const flushMessageQueue = useCallback(() => {
@@ -375,7 +398,7 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
         messageQueueRef.current.push(item);
       }
     }
-  }, []);
+  }, [wsRef]);
 
   // 发送消息（带队列支持）
   const send = useCallback((msg: WsMessage) => {
@@ -386,7 +409,7 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
       console.log('[WS] 未连接，消息入队');
       messageQueueRef.current.push({ msg, timestamp: Date.now() });
     }
-  }, []);
+  }, [wsRef]);
 
   const sendMessage = useCallback(
     (receiverId: string, receiverType: string, content: string, messageType = 'text', metadata?: Record<string, unknown>): string => {

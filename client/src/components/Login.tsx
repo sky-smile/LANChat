@@ -8,7 +8,7 @@ import './Login.css';
 const { Text } = Typography;
 
 interface LoginFormData {
-  username: string;
+  account: string;
   password: string;
 }
 
@@ -20,11 +20,11 @@ function Login() {
   const onFinish = async (values: LoginFormData) => {
     setLoading(true);
     try {
-      await login(values.username, values.password);
+      await login(values.account, values.password);
       message.success('登录成功');
       navigate('/');
     } catch (error) {
-      message.error('登录失败，请检查用户名和密码');
+      message.error('登录失败，请检查账户和密码');
     } finally {
       setLoading(false);
     }
@@ -47,12 +47,14 @@ function Login() {
           size="large"
         >
           <Form.Item
-            name="username"
-            rules={[{ required: true, message: '请输入用户名' }]}
+            name="account"
+            rules={[
+              { required: true, message: '请输入账户' },
+            ]}
           >
             <Input
               prefix={<UserOutlined />}
-              placeholder="用户名"
+              placeholder="账户 / 手机号"
               autoComplete="username"
             />
           </Form.Item>
@@ -76,7 +78,7 @@ function Login() {
 
           <div className="login-footer">
             <Text type="secondary" className="login-hint">
-              <InfoCircleOutlined /> 没有账号？请联系管理员开通
+              <InfoCircleOutlined /> 没有账号？<a onClick={() => navigate('/register')}>立即注册</a>
             </Text>
           </div>
         </Form>

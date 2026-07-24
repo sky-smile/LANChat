@@ -1,46 +1,58 @@
-/* 设置面板 */
 .settings-page {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
-}
-
-.settings-header {
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.settings-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
+  background: var(--bg-secondary);
 }
 
 .settings-content {
-  padding: 16px;
-  overflow: auto;
+  padding: var(--space-lg);
+  overflow-y: auto;
   flex: 1;
+  background: var(--bg-primary);
 }
 
 .settings-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  margin-bottom: var(--space-lg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+}
+
+.settings-card .ant-card-head {
+  border-bottom: 1px solid var(--border-light);
+  padding: 0 var(--space-lg);
+  min-height: 48px;
+}
+
+.settings-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-card-title .anticon {
+  color: var(--primary-color);
 }
 
 .settings-avatar {
   display: flex;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-lg);
+}
+
+.settings-avatar .ant-avatar {
+  border: 3px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
 }
 
 .settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 0;
+  padding: var(--space-xs) 0;
 }
 
 .settings-row-info {
@@ -50,26 +62,38 @@
 .settings-row-title {
   font-size: 14px;
   font-weight: 500;
+  color: var(--text-primary);
 }
 
 .settings-row-desc {
   font-size: 12px;
-  color: #999;
-  margin-top: 2px;
+  color: var(--text-tertiary);
+  margin-top: var(--space-xs);
+}
+
+.settings-descriptions .ant-descriptions-item-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+  width: 90px;
+}
+
+.settings-descriptions .ant-descriptions-item-content {
+  color: var(--text-primary);
 }
 
 .settings-about p {
-  margin: 4px 0;
-  color: #666;
+  margin: var(--space-xs) 0;
+  color: var(--text-secondary);
 }
 
 .settings-tech {
-  color: #999 !important;
+  color: var(--text-tertiary) !important;
   font-size: 12px;
-  margin-top: 8px !important;
+  margin-top: var(--space-md) !important;
 }
 
 .settings-mono {
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   font-size: 12px;
+  color: var(--text-secondary);
 }

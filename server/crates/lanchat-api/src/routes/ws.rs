@@ -48,13 +48,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             // 认证成功
                             let user_id = claims.sub.clone();
 
-                            // 从数据库获取用户名
-                            let display_name = if let Ok(uid) = Uuid::parse_str(&user_id) {
+                            // 从数据库获取用户姓名
+                            let name = if let Ok(uid) = Uuid::parse_str(&user_id) {
                                 lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
                                     .await
                                     .ok()
                                     .flatten()
-                                    .and_then(|u| u.display_name)
+                                    .map(|u| if u.name.is_empty() { u.account } else { u.name })
                                     .unwrap_or_else(|| user_id.clone())
                             } else {
                                 user_id.clone()
@@ -62,7 +62,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
                             let auth_ok = WsMessage::AuthOk(AuthOkPayload {
                                 user_id: user_id.clone(),
-                                username: display_name,
+                                name,
                             });
                             let _ = tx.send(Message::Text(auth_ok.to_json().into()));
                             user_id
@@ -240,6 +240,25 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
 
     // 群组消息需要验证发送者是否为群成员
     if payload.receiver_type == "group" {
+        // 先检查群组是否存在
+        let group_exists = lanchat_core::services::group::get_group(&state.db, &receiver_uuid)
+            .await
+            .ok()
+            .flatten()
+            .is_some();
+        if !group_exists {
+            tracing::warn!("用户 {} 尝试向已解散群组 {} 发送消息", sender_id, payload.receiver_id);
+            let conns = state.connections.read().await;
+            if let Some((tx, _)) = conns.get(sender_id) {
+                let err_msg = serde_json::json!({
+                    "type": "error",
+                    "payload": { "message": "该群组已解散，无法发送消息", "code": "group_deleted" }
+                });
+                let _ = tx.send(Message::Text(err_msg.to_string().into()));
+            }
+            return;
+        }
+
         let is_member = lanchat_core::services::group::is_member(&state.db, &receiver_uuid, &sender_uuid)
             .await
             .unwrap_or(false);
@@ -250,7 +269,7 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
             if let Some((tx, _)) = conns.get(sender_id) {
                 let err_msg = serde_json::json!({
                     "type": "error",
-                    "payload": { "message": "您不是该群组的成员，无法发送消息" }
+                    "payload": { "message": "您不是该群组的成员，无法发送消息", "code": "not_member" }
                 });
                 let _ = tx.send(Message::Text(err_msg.to_string().into()));
             }
@@ -277,12 +296,12 @@ async fn handle_send_message(state: &AppState, sender_id: &str, payload: SendMes
         }
     };
 
-    // 获取发送者名称
+    // 获取发送者名称（优先展示姓名，回退到账户）
     let sender_name = lanchat_core::repository::user_repository::find_by_id(&state.db, &sender_uuid)
         .await
         .ok()
         .flatten()
-        .map(|u| u.display_name.unwrap_or(u.username))
+        .map(|u| if u.name.is_empty() { u.account } else { u.name })
         .unwrap_or_else(|| sender_id.to_string());
 
     // 发送确认给发送者
@@ -643,7 +662,7 @@ async fn handle_group_call_create(state: &AppState, user_id: &str, payload: Grou
             .await
             .ok()
             .flatten()
-            .and_then(|u| u.display_name)
+            .map(|u| if u.name.is_empty() { u.account } else { u.name })
             .unwrap_or_else(|| user_id.to_string())
     } else {
         user_id.to_string()

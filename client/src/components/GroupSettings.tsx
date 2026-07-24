@@ -10,8 +10,8 @@ const { Text } = Typography;
 
 interface GroupMember {
   id: string;
-  username: string;
-  display_name?: string;
+  account: string;
+  name: string;
   avatar_url?: string;
   role: string;
   status?: string;
@@ -76,7 +76,7 @@ function GroupSettings({ groupId, open, onClose, onGroupNameChange }: GroupSetti
   const loadContacts = useCallback(async () => {
     try {
       const resp = await api.get('/auth/users');
-      let users: ContactOption[] = (resp.data.data || [])
+      const users: ContactOption[] = (resp.data.data || [])
         .filter((u: Record<string, unknown>) => {
           // 过滤掉已经是成员的用户
           const uid = u.id as string;
@@ -84,7 +84,7 @@ function GroupSettings({ groupId, open, onClose, onGroupNameChange }: GroupSetti
         })
         .map((u: Record<string, unknown>) => ({
           value: u.id as string,
-          label: `${(u.display_name as string) || (u.username as string)} (@${u.username as string})`,
+          label: `${(u.name as string) || (u.account as string)} (@${u.account as string})`,
         }));
 
       // 如果当前用户不是群组成员，也加入可选列表
@@ -93,7 +93,7 @@ function GroupSettings({ groupId, open, onClose, onGroupNameChange }: GroupSetti
         if (!alreadyIncluded) {
           users.unshift({
             value: currentUserId!,
-            label: `${currentUser.displayName || currentUser.username} (@${currentUser.username}) [我]`,
+            label: `${currentUser.name || currentUser.account} (@${currentUser.account}) [我]`,
           });
         }
       }
@@ -259,13 +259,13 @@ function GroupSettings({ groupId, open, onClose, onGroupNameChange }: GroupSetti
                   avatar={<Avatar icon={<UserOutlined />} src={member.avatar_url} />}
                   title={
                     <span>
-                      {member.display_name || member.username}
+                      {member.name || member.account}
                       {member.id === currentUserId && (
                         <Tag color="blue" style={{ marginLeft: 8 }}>我</Tag>
                       )}
                     </span>
                   }
-                  description={`@${member.username}`}
+                  description={`@${member.account}`}
                 />
               </List.Item>
             )}

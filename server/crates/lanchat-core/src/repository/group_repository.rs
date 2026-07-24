@@ -18,7 +18,7 @@ pub async fn create_group(
     // 创建群组
     let group = sqlx::query_as::<_, Group>(
         "INSERT INTO groups (name, description, created_by) VALUES ($1, $2, $3) \
-         RETURNING id, name, description, avatar_url, group_type, max_members, created_by, created_at",
+         RETURNING id, name, description, avatar_url, group_type, max_members, created_by, created_at, is_system",
     )
     .bind(name)
     .bind(description)
@@ -43,7 +43,7 @@ pub async fn create_group(
 /// 按 ID 查找群组
 pub async fn find_by_id(pool: &PgPool, id: &Uuid) -> Result<Option<Group>, sqlx::Error> {
     sqlx::query_as::<_, Group>(
-        "SELECT id, name, description, avatar_url, group_type, max_members, created_by, created_at \
+        "SELECT id, name, description, avatar_url, group_type, max_members, created_by, created_at, is_system \
          FROM groups WHERE id = $1",
     )
     .bind(id)
@@ -79,7 +79,7 @@ pub async fn update_group(
     }
 
     let sql = format!(
-        "UPDATE groups SET {} WHERE id = ${} RETURNING id, name, description, avatar_url, group_type, max_members, created_by, created_at",
+        "UPDATE groups SET {} WHERE id = ${} RETURNING id, name, description, avatar_url, group_type, max_members, created_by, created_at, is_system",
         sets.join(", "),
         idx
     );
@@ -138,7 +138,7 @@ pub async fn get_members(
 ) -> Result<Vec<(GroupMember, User)>, sqlx::Error> {
     let rows = sqlx::query(
         "SELECT gm.id as gm_id, gm.group_id, gm.user_id, gm.role, gm.joined_at, \
-                u.id as u_id, u.username, u.password_hash, u.display_name, u.avatar_url, \
+                u.id as u_id, u.account, u.password_hash, u.name, u.avatar_url, \
                 u.department, u.role as user_role, u.status, u.last_seen_at, \
                 u.created_at as u_created_at, u.updated_at \
          FROM group_members gm \
@@ -161,9 +161,9 @@ pub async fn get_members(
         };
         let user = User {
             id: row.get("u_id"),
-            username: row.get("username"),
+            account: row.get("account"),
             password_hash: row.get("password_hash"),
-            display_name: row.get("display_name"),
+            name: row.get("name"),
             avatar_url: row.get("avatar_url"),
             department: row.get("department"),
             role: row.get("user_role"),
@@ -197,11 +197,11 @@ pub async fn get_user_groups(
     user_id: &Uuid,
 ) -> Result<Vec<Group>, sqlx::Error> {
     sqlx::query_as::<_, Group>(
-        "SELECT g.id, g.name, g.description, g.avatar_url, g.group_type, g.max_members, g.created_by, g.created_at \
+        "SELECT g.id, g.name, g.description, g.avatar_url, g.group_type, g.max_members, g.created_by, g.created_at, g.is_system \
          FROM groups g \
          JOIN group_members gm ON g.id = gm.group_id \
          WHERE gm.user_id = $1 \
-         ORDER BY g.created_at DESC",
+         ORDER BY g.is_system DESC, g.created_at DESC",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -213,9 +213,9 @@ pub async fn get_all_groups(
     pool: &PgPool,
 ) -> Result<Vec<Group>, sqlx::Error> {
     sqlx::query_as::<_, Group>(
-        "SELECT id, name, description, avatar_url, group_type, max_members, created_by, created_at \
+        "SELECT id, name, description, avatar_url, group_type, max_members, created_by, created_at, is_system \
          FROM groups \
-         ORDER BY created_at DESC",
+         ORDER BY is_system DESC, created_at DESC",
     )
     .fetch_all(pool)
     .await
@@ -267,14 +267,14 @@ pub async fn get_member_count(
     Ok(count)
 }
 
-/// 删除群组（仅创建者可操作）
+/// 删除群组（仅创建者可操作，不可删除系统群组）
 pub async fn delete_group(
     pool: &PgPool,
     group_id: &Uuid,
     user_id: &Uuid,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
-        "DELETE FROM groups WHERE id = $1 AND created_by = $2",
+        "DELETE FROM groups WHERE id = $1 AND created_by = $2 AND is_system = false",
     )
     .bind(group_id)
     .bind(user_id)
@@ -283,16 +283,40 @@ pub async fn delete_group(
     Ok(result.rows_affected() > 0)
 }
 
-/// 强制删除群组（管理员专用，无需创建者验证）
+/// 强制删除群组（管理员专用，无需创建者验证，但不可删除系统群组）
 pub async fn force_delete_group(
     pool: &PgPool,
     group_id: &Uuid,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
-        "DELETE FROM groups WHERE id = $1",
+        "DELETE FROM groups WHERE id = $1 AND is_system = false",
     )
     .bind(group_id)
     .execute(pool)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// 查找系统默认群组（is_system = true）
+pub async fn find_system_group(pool: &PgPool) -> Result<Option<Group>, sqlx::Error> {
+    sqlx::query_as::<_, Group>(
+        "SELECT id, name, description, avatar_url, group_type, max_members, created_by, created_at, is_system \
+         FROM groups WHERE is_system = true LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+}
+
+/// 将用户加入系统默认群组（幂等操作）
+pub async fn join_system_group(
+    pool: &PgPool,
+    user_id: &Uuid,
+) -> Result<Option<GroupMember>, sqlx::Error> {
+    let group = find_system_group(pool).await?;
+    let group = match group {
+        Some(g) => g,
+        None => return Ok(None),
+    };
+    let member = add_member(pool, &group.id, user_id, "member").await?;
+    Ok(Some(member))
 }

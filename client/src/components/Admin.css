@@ -1,28 +1,54 @@
-/* 管理面板 */
 .admin-page {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
-  padding: 16px;
+  background: var(--bg-secondary);
+}
+
+.admin-content {
+  flex: 1;
+  padding: var(--space-lg);
   overflow: auto;
+  background: var(--bg-primary);
+}
+
+.admin-card {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+}
+
+.admin-card .ant-card-body {
+  padding: var(--space-lg);
 }
 
 .admin-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-lg);
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-md);
 }
 
 .admin-header h2 {
   margin: 0;
   font-size: 18px;
-  color: #333;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
-.admin-header h2 svg {
-  margin-right: 8px;
+.admin-header h2 .anticon {
+  color: var(--primary-color);
+}
+
+.admin-search {
+  width: 260px;
+}
+
+.admin-search .ant-input-affix-wrapper {
+  border-radius: var(--radius-md);
 }

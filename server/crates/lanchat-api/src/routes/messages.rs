@@ -40,21 +40,31 @@ async fn history_handler(
 
     // 群组消息需要验证用户是否为群成员
     if target_type == "group" {
-        let is_member = lanchat_core::services::group::is_member(&state.db, &tid, &uid)
+        // 先检查群组是否存在
+        let group_exists = lanchat_core::services::group::get_group(&state.db, &tid)
             .await
-            .unwrap_or(false);
-        if !is_member {
-            // 检查是否为管理员（管理员可查看任何群组）
-            let is_admin = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+            .ok()
+            .flatten()
+            .is_some();
+
+        if group_exists {
+            // 群组存在：检查是否为成员或管理员
+            let is_member = lanchat_core::services::group::is_member(&state.db, &tid, &uid)
                 .await
-                .ok()
-                .flatten()
-                .map(|u| u.role == "admin")
                 .unwrap_or(false);
-            if !is_admin {
-                return Err(AppError(ApiError::AuthError(AuthError::Forbidden)));
+            if !is_member {
+                let is_admin = lanchat_core::repository::user_repository::find_by_id(&state.db, &uid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|u| u.role == "admin")
+                    .unwrap_or(false);
+                if !is_admin {
+                    return Err(AppError(ApiError::AuthError(AuthError::Forbidden)));
+                }
             }
         }
+        // 群组已删除（归档）：允许任何人查看历史消息
     }
 
     let limit = query.limit.unwrap_or(50).min(100);

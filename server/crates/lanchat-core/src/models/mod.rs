@@ -5,15 +5,16 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// 用户模型
+/// 字段映射：account（账户/手机号）对应原 username；name（姓名）对应原 display_name
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
-    pub username: String,
+    pub account: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
-    pub display_name: Option<String>,
+    pub name: String,
     pub avatar_url: Option<String>,
-    pub department: Option<String>,
+    pub department: String,
     pub role: String,
     pub status: String,
     pub last_seen_at: Option<DateTime<Utc>>,
@@ -32,6 +33,7 @@ pub struct Group {
     pub max_members: i32,
     pub created_by: Uuid,
     pub created_at: DateTime<Utc>,
+    pub is_system: bool,
 }
 
 /// 群组成员模型
@@ -59,6 +61,7 @@ pub struct Message {
 }
 
 /// 带发送者信息的消息模型（用于历史消息查询）
+/// 字段映射：sender_account 对应原 sender_name（登录账户）；sender_name 对应原 sender_display_name（姓名）
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct MessageWithSender {
     pub id: Uuid,
@@ -70,8 +73,8 @@ pub struct MessageWithSender {
     pub metadata: Option<serde_json::Value>,
     pub is_read: bool,
     pub created_at: DateTime<Utc>,
+    pub sender_account: String,
     pub sender_name: String,
-    pub sender_display_name: Option<String>,
 }
 
 /// 文件模型
@@ -96,11 +99,11 @@ mod tests {
     fn test_user_serialize_skips_password_hash() {
         let user = User {
             id: Uuid::new_v4(),
-            username: "test".to_string(),
+            account: "13800138000".to_string(),
             password_hash: "secret".to_string(),
-            display_name: Some("Test".to_string()),
+            name: "Test".to_string(),
             avatar_url: None,
-            department: None,
+            department: "研发部".to_string(),
             role: "user".to_string(),
             status: "online".to_string(),
             last_seen_at: None,
@@ -109,7 +112,7 @@ mod tests {
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(!json.contains("secret"), "password_hash 不应出现在 JSON 中");
-        assert!(json.contains("test"));
+        assert!(json.contains("13800138000"));
     }
 
     #[test]

@@ -26,6 +26,10 @@ export interface Conversation {
   type: 'user' | 'group';
   status?: string;
   groupMemberCount?: number;
+  /** 是否为系统默认群组（置顶显示，不可删除） */
+  isSystem?: boolean;
+  /** 是否已归档（群组被解散后归档，可查看历史但不可发消息） */
+  archived?: boolean;
 }
 
 interface ChatState {
@@ -40,6 +44,8 @@ interface ChatState {
   updateMessageAck: (clientId: string, serverMsgId: string, createdAt: string) => void;
   updateContactStatus: (userId: string, status: string) => void;
   addConversation: (conversation: Conversation) => void;
+  removeConversation: (id: string) => void;
+  archiveConversation: (id: string) => void;
   updateConversationName: (id: string, name: string) => void;
   markConversationRead: (userId: string) => void;
   reset: () => void;
@@ -165,6 +171,23 @@ export const useChatStore = create<ChatState>()(
           }
           return { conversations: [conversation, ...state.conversations] };
         });
+      },
+
+      removeConversation: (id) => {
+        set((state) => ({
+          conversations: state.conversations.filter((c) => c.id !== id),
+          currentConversation: state.currentConversation === id ? null : state.currentConversation,
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          messages: (({ [id]: _, ...rest }) => rest)(state.messages),
+        }));
+      },
+
+      archiveConversation: (id) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, archived: true } : c,
+          ),
+        }));
       },
 
       updateConversationName: (id, name) => {

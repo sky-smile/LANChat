@@ -21,14 +21,15 @@ interface GroupItem {
   avatarUrl?: string;
   memberCount?: number;
   isMember?: boolean;
+  isSystem?: boolean;
 }
 
 interface ContactItem {
   id: string;
-  username: string;
-  displayName?: string;
+  account: string;
+  name: string;
   avatarUrl?: string;
-  department?: string;
+  department: string;
   status: string;
 }
 
@@ -58,6 +59,7 @@ function Groups() {
         avatarUrl: g.avatar_url as string | undefined,
         memberCount: g.member_count as number | undefined,
         isMember: g.is_member as boolean | undefined,
+        isSystem: g.is_system as boolean | undefined,
       }));
       setGroups(groupsData);
     } catch (err) {
@@ -73,10 +75,10 @@ function Groups() {
       const resp = await api.get('/auth/users');
       const users = (resp.data.data || []).map((u: Record<string, unknown>) => ({
         id: u.id as string,
-        username: u.username as string,
-        displayName: (u.display_name as string) || '',
+        account: u.account as string,
+        name: (u.name as string) || '',
         avatarUrl: u.avatar_url as string | undefined,
-        department: u.department as string | undefined,
+        department: (u.department as string) || '',
         status: (u.status as string) || 'offline',
       }));
       setContacts(users);
@@ -104,6 +106,7 @@ function Groups() {
       unreadCount: 0,
       type: 'group',
       groupMemberCount: group.memberCount,
+      isSystem: group.isSystem,
     });
     setCurrentConversation(group.id);
     setActivePanel('messages');
@@ -134,11 +137,11 @@ function Groups() {
   // 联系人选项（包含当前用户/管理员）
   const contactOptions = [
     ...(currentUser
-      ? [{ value: currentUser.id, label: `${currentUser.displayName || currentUser.username} (@${currentUser.username})` }]
+      ? [{ value: currentUser.id, label: `${currentUser.name || currentUser.account} (@${currentUser.account})` }]
       : []),
     ...contacts.map((c) => ({
       value: c.id,
-      label: `${c.displayName || c.username} (@${c.username})`,
+      label: `${c.name || c.account} (@${c.account})`,
     })),
   ];
 
@@ -146,18 +149,25 @@ function Groups() {
   const handleDeleteGroup = async (groupId: string, groupName: string) => {
     try {
       await api.delete(`/groups/${groupId}`);
-      message.success(`群组「${groupName}」已删除`);
+      message.success(`群组「${groupName}」已解散`);
+      // 归档会话（保留历史消息，标记为已解散）
+      useChatStore.getState().archiveConversation(groupId);
       loadGroups();
     } catch (err) {
-      console.error('删除群组失败', err);
-      message.error('删除群组失败');
+      console.error('解散群组失败', err);
+      message.error('解散群组失败');
     }
   };
 
-  // 搜索过滤后的群组
-  const filteredGroups = searchQuery.trim()
+  // 搜索过滤后的群组，系统群组置顶
+  const filteredGroups = (searchQuery.trim()
     ? groups.filter((g) => g.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : groups;
+    : groups
+  ).sort((a, b) => {
+    if (a.isSystem && !b.isSystem) return -1;
+    if (!a.isSystem && b.isSystem) return 1;
+    return 0;
+  });
 
   return (
     <div className="groups-page">
@@ -187,7 +197,9 @@ function Groups() {
         {loading ? (
           <div className="groups-loading"><Spin /></div>
         ) : filteredGroups.length === 0 ? (
-          <Empty description={searchQuery.trim() ? "未找到群组" : "暂无群组"} />
+          <div className="panel-empty">
+            <Empty description={searchQuery.trim() ? "未找到群组" : "暂无群组"} />
+          </div>
         ) : (
           <List
             dataSource={filteredGroups}
@@ -197,6 +209,9 @@ function Groups() {
                 <div className="group-info">
                   <div className="group-name">
                     {group.name}
+                    {group.isSystem && (
+                      <Tag color="gold" style={{ marginLeft: 8 }}>系统</Tag>
+                    )}
                     {isAdmin && group.isMember === false && (
                       <Tag color="orange" style={{ marginLeft: 8 }}>非成员</Tag>
                     )}
@@ -208,37 +223,41 @@ function Groups() {
                     )}
                   </div>
                 </div>
-                <Button
-                  type="text"
-                  icon={<SettingOutlined />}
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSettingsGroupId(group.id);
-                  }}
-                />
-                {isAdmin && (
-                  <Popconfirm
-                    title="确认删除"
-                    description={`确定要删除群组「${group.name}」吗？此操作不可恢复。`}
-                    onConfirm={(e) => {
-                      e?.stopPropagation();
-                      handleDeleteGroup(group.id, group.name);
+                <div className="group-actions">
+                  <Button
+                    type="text"
+                    icon={<SettingOutlined />}
+                    size="small"
+                    title="群组设置"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSettingsGroupId(group.id);
                     }}
-                    onCancel={(e) => e?.stopPropagation()}
-                    okText="删除"
-                    cancelText="取消"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button
-                      type="text"
-                      danger
-                      icon={<DeleteOutlined />}
-                      size="small"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </Popconfirm>
-                )}
+                  />
+                  {isAdmin && !group.isSystem && (
+                    <Popconfirm
+                      title="确认删除"
+                      description={`确定要删除群组「${group.name}」吗？此操作不可恢复。`}
+                      onConfirm={(e) => {
+                        e?.stopPropagation();
+                        handleDeleteGroup(group.id, group.name);
+                      }}
+                      onCancel={(e) => e?.stopPropagation()}
+                      okText="删除"
+                      cancelText="取消"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        size="small"
+                        title="删除群组"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </Popconfirm>
+                  )}
+                </div>
               </div>
             )}
           />

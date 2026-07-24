@@ -5,10 +5,12 @@ import { useChatStore } from './chat';
 
 export interface User {
   id: string;
-  username: string;
-  displayName: string;
+  /** 账户/手机号（对应原 username） */
+  account: string;
+  /** 姓名（对应原 displayName） */
+  name: string;
   avatarUrl?: string;
-  department?: string;
+  department: string;
   role: string;
   status: string;
 }
@@ -17,7 +19,7 @@ interface AuthState {
   token: string | null;
   user: User | null;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (account: string, password: string) => Promise<void>;
   logout: () => void;
   setUser: (user: User) => void;
   updateUserStatus: (status: string) => void;
@@ -25,13 +27,13 @@ interface AuthState {
 
 interface LoginResponse {
   token: string;
-  // 服务器返回 snake_case 字段
+  // 服务器返回 snake_case 字段；account/name 对应原 username/display_name
   user: {
     id: string;
-    username: string;
-    display_name: string | null;
+    account: string;
+    name: string;
     avatar_url?: string;
-    department?: string;
+    department: string;
     role: string;
     status: string;
   };
@@ -44,9 +46,9 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isAuthenticated: false,
 
-      login: async (username: string, password: string) => {
+      login: async (account: string, password: string) => {
         const response = await api.post<{ code: number; data: LoginResponse }>('/auth/login', {
-          username,
+          account,
           password,
         });
 
@@ -54,8 +56,8 @@ export const useAuthStore = create<AuthState>()(
         // 服务器返回 snake_case，转换为 camelCase
         const user: User = {
           id: raw.id,
-          username: raw.username,
-          displayName: raw.display_name || '',
+          account: raw.account,
+          name: raw.name,
           avatarUrl: raw.avatar_url,
           department: raw.department,
           role: raw.role,

@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { List, Avatar, Badge, Input, Spin } from 'antd';
+import { List, Avatar, Badge, Input, Spin, Empty } from 'antd';
 import {
   UserOutlined,
   TeamOutlined,
   SearchOutlined,
+  CrownOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore } from '@/stores/chat';
@@ -49,10 +50,10 @@ function ConversationList() {
         const resp = await api.get('/auth/search', { params: { q: value.trim(), limit: 10 } });
         const users = (resp.data.data || []).map((u: Record<string, unknown>) => ({
           id: u.id as string,
-          username: u.username as string,
-          displayName: (u.display_name as string) || '',
+          account: u.account as string,
+          name: (u.name as string) || '',
           avatar: u.avatar_url as string | undefined,
-          department: u.department as string | undefined,
+          department: (u.department as string) || '',
           status: (u.status as string) || 'offline',
         }));
         setSearchResults(users);
@@ -69,7 +70,7 @@ function ConversationList() {
   const handleUserSelect = useCallback((contact: Contact) => {
     addConversation({
       id: contact.id,
-      name: contact.displayName || contact.username,
+      name: contact.name || contact.account,
       avatar: contact.avatar,
       unreadCount: 0,
       type: 'user',
@@ -106,7 +107,6 @@ function ConversationList() {
         <Input
           prefix={<SearchOutlined />}
           placeholder="搜索用户..."
-          size="small"
           value={searchQuery}
           onChange={(e) => handleSearch(e.target.value)}
           allowClear
@@ -118,7 +118,9 @@ function ConversationList() {
       {searchQuery && (
         <div className="panel-search-results">
           {liveSearchResults.length === 0 && !searching ? (
-            <div className="panel-empty">未找到用户</div>
+            <div className="panel-empty">
+              <Empty description="未找到用户" />
+            </div>
           ) : (
             <List
               dataSource={liveSearchResults}
@@ -129,8 +131,8 @@ function ConversationList() {
                 >
                   <Avatar icon={<UserOutlined />} />
                   <div className="conv-info">
-                    <div className="conv-name">{contact.displayName || contact.username}</div>
-                    <div className="conv-preview">{contact.username}</div>
+                    <div className="conv-name">{contact.name || contact.account}</div>
+                    <div className="conv-preview">{contact.account}</div>
                   </div>
                   <div className={`status-dot ${contact.status}`} />
                 </div>
@@ -144,32 +146,62 @@ function ConversationList() {
       {!searchQuery && (
         <div className="conversation-list">
           {conversations.length === 0 ? (
-            <div className="panel-empty">暂无会话</div>
+            <div className="panel-empty">
+              <Empty description="暂无会话" />
+            </div>
           ) : (
             <List
-              dataSource={conversations}
+              dataSource={[...conversations].sort((a, b) => {
+                // 归档（已解散）会话置底
+                if (a.archived && !b.archived) return 1;
+                if (!a.archived && b.archived) return -1;
+                // 系统群组置顶
+                if (a.isSystem && !b.isSystem) return -1;
+                if (!a.isSystem && b.isSystem) return 1;
+                return 0;
+              })}
               renderItem={(conv) => {
                 const isGroup = conv.type === 'group';
+                const isArchived = conv.archived === true;
                 return (
                   <div
-                    className={`conv-item ${conv.id === currentConversation ? 'active' : ''}`}
+                    className={`conv-item ${conv.id === currentConversation ? 'active' : ''} ${isArchived ? 'archived' : ''}`}
                     onClick={() => handleConversationClick(conv.id)}
                   >
-                    <Badge count={conv.unreadCount} size="small">
+                    {isGroup ? (
                       <div className="conv-avatar-wrap">
                         <Avatar
-                          icon={isGroup ? <TeamOutlined /> : <UserOutlined />}
-                          src={!isGroup ? conv.avatar : undefined}
-                          style={isGroup ? { backgroundColor: '#1890ff' } : undefined}
+                          icon={<TeamOutlined />}
+                          style={{
+                            backgroundColor: isArchived ? '#bfbfbf' : '#1890ff',
+                          }}
                           size={40}
                         />
-                        {!isGroup && conv.status && (
-                          <div className={`conv-status-dot ${conv.status}`} />
+                      </div>
+                    ) : (
+                      <Badge count={conv.unreadCount} size="small">
+                        <div className="conv-avatar-wrap">
+                          <Avatar
+                            icon={<UserOutlined />}
+                            src={conv.avatar}
+                            size={40}
+                          />
+                          {conv.status && (
+                            <div className={`conv-status-dot ${conv.status}`} />
+                          )}
+                        </div>
+                      </Badge>
+                    )}
+                    <div className="conv-info">
+                      <div className="conv-name">
+                        {conv.name}
+                        {conv.isSystem && (
+                          <CrownOutlined style={{ color: '#faad14', marginLeft: 4, fontSize: 12 }} />
+                        )}
+                        {isArchived && (
+                          <span style={{ color: '#bfbfbf', marginLeft: 4, fontSize: 12 }}>已解散</span>
                         )}
                       </div>
-                    </Badge>
-                    <div className="conv-info">
-                      <div className="conv-name">{conv.name}</div>
                       {conv.lastMessage && (
                         <div className="conv-preview">
                           {isGroup && conv.lastMessage.senderName

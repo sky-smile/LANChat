@@ -42,7 +42,7 @@ pub async fn get_messages_between_users(
         sqlx::query_as::<_, MessageWithSender>(
             "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
                     m.metadata, m.is_read, m.created_at,
-                    u.username AS sender_name, u.display_name AS sender_display_name
+                    u.account AS sender_account, u.name AS sender_name
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              WHERE m.receiver_type = 'user'
@@ -64,7 +64,7 @@ pub async fn get_messages_between_users(
         sqlx::query_as::<_, MessageWithSender>(
             "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
                     m.metadata, m.is_read, m.created_at,
-                    u.username AS sender_name, u.display_name AS sender_display_name
+                    u.account AS sender_account, u.name AS sender_name
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              WHERE m.receiver_type = 'user'
@@ -94,7 +94,7 @@ pub async fn get_group_messages(
         sqlx::query_as::<_, MessageWithSender>(
             "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
                     m.metadata, m.is_read, m.created_at,
-                    u.username AS sender_name, u.display_name AS sender_display_name
+                    u.account AS sender_account, u.name AS sender_name
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              WHERE m.receiver_id = $1 AND m.receiver_type = 'group'
@@ -111,7 +111,7 @@ pub async fn get_group_messages(
         sqlx::query_as::<_, MessageWithSender>(
             "SELECT m.id, m.sender_id, m.receiver_id, m.receiver_type, m.content, m.message_type,
                     m.metadata, m.is_read, m.created_at,
-                    u.username AS sender_name, u.display_name AS sender_display_name
+                    u.account AS sender_account, u.name AS sender_name
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              WHERE m.receiver_id = $1 AND m.receiver_type = 'group'

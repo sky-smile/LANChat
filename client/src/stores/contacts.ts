@@ -2,10 +2,12 @@ import { create } from 'zustand';
 
 export interface Contact {
   id: string;
-  username: string;
-  displayName: string;
+  /** 账户/手机号（对应原 username） */
+  account: string;
+  /** 姓名（对应原 displayName） */
+  name: string;
   avatar?: string;
-  department?: string;
+  department: string;
   status: 'online' | 'away' | 'busy' | 'offline';
 }
 

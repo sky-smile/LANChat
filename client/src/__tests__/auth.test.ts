@@ -21,23 +21,25 @@ describe('useAuthStore', () => {
   it('setUser 应更新用户信息', () => {
     const user = {
       id: 'u1',
-      username: 'testuser',
-      displayName: '测试用户',
+      account: 'testuser',
+      name: '测试用户',
+      department: '测试部',
       role: 'user',
       status: 'online',
     };
     useAuthStore.getState().setUser(user);
     const state = useAuthStore.getState();
-    expect(state.user?.username).toBe('testuser');
-    expect(state.user?.displayName).toBe('测试用户');
+    expect(state.user?.account).toBe('testuser');
+    expect(state.user?.name).toBe('测试用户');
   });
 
   it('updateUserStatus 应更新状态', () => {
     useAuthStore.setState({
       user: {
         id: 'u1',
-        username: 'testuser',
-        displayName: 'Test',
+        account: 'testuser',
+        name: 'Test',
+        department: '测试部',
         role: 'user',
         status: 'online',
       },
@@ -51,8 +53,9 @@ describe('useAuthStore', () => {
       token: 'some-token',
       user: {
         id: 'u1',
-        username: 'testuser',
-        displayName: 'Test',
+        account: 'testuser',
+        name: 'Test',
+        department: '测试部',
         role: 'user',
         status: 'online',
       },

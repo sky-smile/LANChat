@@ -34,7 +34,7 @@ async fn login_handler(
     State(state): State<AppState>,
     Json(request): Json<LoginRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<AuthResponse>>), AppError> {
-    let response = auth::login(&state.db, &request.username, &request.password, &state.jwt_secret).await?;
+    let response = auth::login(&state.db, &request.account, &request.password, &state.jwt_secret).await?;
 
     // 登录成功：设置用户状态为在线
     let uid = response.user.id;
@@ -53,14 +53,7 @@ async fn register_handler(
     State(state): State<AppState>,
     Json(request): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<AuthResponse>>), AppError> {
-    let response = auth::register(
-        &state.db,
-        &request.username,
-        &request.password,
-        request.display_name.as_deref(),
-        &state.jwt_secret,
-    )
-    .await?;
+    let response = auth::register(&state.db, &request, &state.jwt_secret).await?;
     Ok((StatusCode::CREATED, Json(ApiResponse::success(response))))
 }
 
@@ -97,9 +90,11 @@ async fn me_handler(
 }
 
 /// 更新用户资料请求
+/// 字段映射：name（姓名）对应原 display_name；department（部门）为新增可编辑项
 #[derive(serde::Deserialize)]
 struct UpdateMeRequest {
-    display_name: Option<String>,
+    name: String,
+    department: String,
 }
 
 /// 更新当前用户资料
@@ -112,10 +107,18 @@ async fn update_me_handler(
         AppError(ApiError::AuthError(lanchat_common::error::AuthError::TokenError(e.to_string())))
     })?;
 
+    if req.name.trim().is_empty() {
+        return Err(AppError(ApiError::ValidationError("姓名不能为空".to_string())));
+    }
+    if req.department.trim().is_empty() {
+        return Err(AppError(ApiError::ValidationError("部门不能为空".to_string())));
+    }
+
     let user = lanchat_core::repository::user_repository::update_profile(
         &state.db,
         &uid,
-        req.display_name.as_deref(),
+        &req.name,
+        &req.department,
     )
     .await
     .map_err(|e| AppError(ApiError::DatabaseError(e)))?

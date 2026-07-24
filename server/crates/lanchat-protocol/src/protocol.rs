@@ -132,7 +132,7 @@ pub struct AuthPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthOkPayload {
     pub user_id: String,
-    pub username: String,
+    pub name: String,
 }
 
 /// 发送消息载荷
