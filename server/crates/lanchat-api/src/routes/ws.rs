@@ -137,17 +137,25 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     }
 
     // 清理：仅当连接 token 匹配时才移除（避免重连时误删新连接）
-    {
+    let was_active = {
         let mut conns = state.connections.write().await;
         if let Some((_, token)) = conns.get(&user_id) {
             if *token == conn_token {
                 conns.remove(&user_id);
+                true
+            } else {
+                false // 已被新连接替换，不设离线
             }
+        } else {
+            true // 连接已不存在
         }
-    }
+    };
 
-    update_user_status(&state, &user_id, "offline").await;
-    broadcast_presence(&state, &user_id, "offline", None).await;
+    // 仅当此连接是用户的活跃连接时，才设置离线状态
+    if was_active {
+        update_user_status(&state, &user_id, "offline").await;
+        broadcast_presence(&state, &user_id, "offline", None).await;
+    }
 }
 
 /// 处理文本消息
@@ -605,7 +613,7 @@ async fn update_user_status(state: &AppState, user_id: &str, status: &str) {
 }
 
 /// 广播在线状态
-async fn broadcast_presence(state: &AppState, user_id: &str, status: &str, exclude: Option<&str>) {
+pub async fn broadcast_presence(state: &AppState, user_id: &str, status: &str, exclude: Option<&str>) {
     let presence = WsMessage::Presence(PresencePayload {
         user_id: user_id.to_string(),
         status: status.to_string(),

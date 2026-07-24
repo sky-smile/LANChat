@@ -26,6 +26,7 @@ pub fn auth_protected_routes() -> Router<AppState> {
         .route("/me", get(me_handler).put(update_me_handler))
         .route("/search", get(search_users_handler))
         .route("/users", get(list_users_handler))
+        .route("/logout", post(logout_handler))
 }
 
 /// 登录处理
@@ -34,6 +35,16 @@ async fn login_handler(
     Json(request): Json<LoginRequest>,
 ) -> Result<(StatusCode, Json<ApiResponse<AuthResponse>>), AppError> {
     let response = auth::login(&state.db, &request.username, &request.password, &state.jwt_secret).await?;
+
+    // 登录成功：设置用户状态为在线
+    let uid = response.user.id;
+    let _ = lanchat_core::repository::user_repository::set_user_status(
+        &state.db, &uid, "online",
+    ).await;
+    let user_id_str = uid.to_string();
+    // 向其他在线用户广播上线通知
+    crate::routes::ws::broadcast_presence(&state, &user_id_str, "online", Some(&user_id_str)).await;
+
     Ok((StatusCode::OK, Json(ApiResponse::success(response))))
 }
 
@@ -51,6 +62,22 @@ async fn register_handler(
     )
     .await?;
     Ok((StatusCode::CREATED, Json(ApiResponse::success(response))))
+}
+
+/// 登出处理
+async fn logout_handler(
+    State(state): State<AppState>,
+    axum::extract::Extension(user_id): axum::extract::Extension<String>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+    // 设置用户状态为离线
+    if let Ok(uid) = Uuid::parse_str(&user_id) {
+        let _ = lanchat_core::repository::user_repository::set_user_status(
+            &state.db, &uid, "offline",
+        ).await;
+    }
+    // 向所有在线用户广播离线通知
+    crate::routes::ws::broadcast_presence(&state, &user_id, "offline", None).await;
+    Ok(Json(ApiResponse::success(())))
 }
 
 /// 获取当前用户信息

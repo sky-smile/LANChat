@@ -67,9 +67,12 @@
   background: #999;
 }
 
-.nav-rail-status-dot.away,
-.nav-rail-status-dot.busy {
+.nav-rail-status-dot.away {
   background: #faad14;
+}
+
+.nav-rail-status-dot.busy {
+  background: #ff4d4f;
 }
 
 .nav-rail-username {

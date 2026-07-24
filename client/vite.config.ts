@@ -13,6 +13,7 @@ export default defineConfig({
   // Tauri 相关配置
   clearScreen: false,
   server: {
+    host: '0.0.0.0',
     port: 1420,
     strictPort: true,
     proxy: {

@@ -100,6 +100,14 @@
   background: #999;
 }
 
+.conv-status-dot.away {
+  background: #faad14;
+}
+
+.conv-status-dot.busy {
+  background: #ff4d4f;
+}
+
 /* 会话信息 */
 .conv-info {
   flex: 1;
@@ -146,7 +154,10 @@
   background: #ccc;
 }
 
-.status-dot.away,
-.status-dot.busy {
+.status-dot.away {
   background: #faad14;
+}
+
+.status-dot.busy {
+  background: #ff4d4f;
 }

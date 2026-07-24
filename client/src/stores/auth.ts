@@ -69,6 +69,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        // 通知服务器设置离线状态
+        api.post('/auth/logout').catch(() => {});
         // 清理聊天状态
         useChatStore.getState().reset();
         set({

@@ -504,7 +504,7 @@ function Chat() {
           )}
           {!isGroup && currentConv?.status && (
             <Text type="secondary" className="chat-header-sub">
-              {currentConv.status === 'online' ? '在线' : '离线'}
+              {({ online: '在线', away: '离开', busy: '忙碌', offline: '离线' } as Record<string, string>)[currentConv.status] || '离线'}
             </Text>
           )}
         </div>

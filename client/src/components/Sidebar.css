@@ -89,9 +89,12 @@
   background: rgba(255, 255, 255, 0.25);
 }
 
-.status-dot.away,
-.status-dot.busy {
+.status-dot.away {
   background: #faad14;
+}
+
+.status-dot.busy {
+  background: #ff4d4f;
 }
 
 /* 会话列表 */
@@ -149,6 +152,14 @@
 
 .conversation-status-dot.offline {
   background: #666;
+}
+
+.conversation-status-dot.away {
+  background: #faad14;
+}
+
+.conversation-status-dot.busy {
+  background: #ff4d4f;
 }
 
 /* 折叠模式紧凑会话列表 */

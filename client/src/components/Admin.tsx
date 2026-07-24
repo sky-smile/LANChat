@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Table,
   Button,
@@ -22,6 +22,7 @@ import {
   TeamOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
+import { useContactsStore } from '@/stores/contacts';
 import './Admin.css';
 
 interface AdminUser {
@@ -59,6 +60,16 @@ function Admin() {
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
+
+  // 获取联系人实时在线状态（来自 WebSocket presence 消息）
+  const contacts = useContactsStore((state) => state.contacts);
+  const realtimeStatusMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const c of contacts) {
+      map[c.id] = c.status;
+    }
+    return map;
+  }, [contacts]);
 
   // 编辑弹窗打开后设置表单初始值
   useEffect(() => {
@@ -216,11 +227,26 @@ function Admin() {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'online' ? 'green' : 'default'}>
-          {status === 'online' ? '在线' : '离线'}
-        </Tag>
-      ),
+      render: (status: string, record: AdminUser) => {
+        // 优先使用 WebSocket 实时状态，回退到 API 返回的状态
+        const liveStatus = realtimeStatusMap[record.id] || status;
+        const colorMap: Record<string, string> = {
+          online: 'green',
+          away: 'orange',
+          busy: 'red',
+        };
+        const labelMap: Record<string, string> = {
+          online: '在线',
+          away: '离开',
+          busy: '忙碌',
+          offline: '离线',
+        };
+        return (
+          <Tag color={colorMap[liveStatus] || 'default'}>
+            {labelMap[liveStatus] || '离线'}
+          </Tag>
+        );
+      },
     },
     {
       title: '创建时间',

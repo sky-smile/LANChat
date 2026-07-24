@@ -164,7 +164,7 @@ function ConversationList() {
                           size={40}
                         />
                         {!isGroup && conv.status && (
-                          <div className={`conv-status-dot ${conv.status === 'online' ? 'online' : 'offline'}`} />
+                          <div className={`conv-status-dot ${conv.status}`} />
                         )}
                       </div>
                     </Badge>

@@ -68,6 +68,20 @@ pub async fn get_all_users(pool: &PgPool, exclude_id: &Uuid, limit: i64) -> Resu
     .await
 }
 
+/// 更新用户在线状态
+pub async fn set_user_status(
+    pool: &PgPool,
+    user_id: &Uuid,
+    status: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE users SET status = $1, last_seen_at = NOW() WHERE id = $2")
+        .bind(status)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// 更新用户资料
 pub async fn update_profile(
     pool: &PgPool,

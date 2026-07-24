@@ -66,6 +66,8 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
   const pingIntervalRef = useRef<ReturnType<typeof setInterval>>();
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const messageQueueRef = useRef<QueuedMessage[]>([]);
+  // 防止 StrictMode 双重挂载导致的重复连接
+  const connectSeqRef = useRef(0);
 
   const token = useAuthStore((state) => state.token);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -253,8 +255,10 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
   useEffect(() => {
     if (!isAuthenticated || !token) return;
 
-    // 使用 effect 作用域内的局部变量，避免 StrictMode 双重挂载之间的竞态条件。
-    // 每个 effect 实例有自己的 cleanedUp，闭包捕获的都是各自独立的变量。
+    // 递增序列号，用于 StrictMode 环境下区分新旧 effect 实例。
+    // cleanup 设置 cleanedUp 后，旧实例的 connect 就不会再执行。
+    connectSeqRef.current += 1;
+    const mySeq = connectSeqRef.current;
     let cleanedUp = false;
     reconnectAttemptsRef.current = 0;
 
@@ -271,14 +275,16 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
 
     function connect() {
       if (cleanedUp) return;
+      // 确保只有最新的 effect 实例可以连接
+      if (connectSeqRef.current !== mySeq) return;
 
       clearTimers();
 
-      // 直接连接后端（WebSocket 不受 CORS 限制，避免 Vite 代理问题）
+      // 通过 Vite 代理连接 WebSocket（Vite proxy 已配置 ws: true）
+      // 在 VS Code Remote 环境中，浏览器无法直接访问后端端口，需经由 Vite 代理转发
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // 生产环境使用 VITE_API_URL 环境变量，开发环境直连后端
       const wsHost = import.meta.env.DEV 
-        ? '127.0.0.1:3000' 
+        ? window.location.host  // 使用当前页面地址（Vite 代理会转发 /api/ws）
         : (import.meta.env.VITE_API_URL 
           ? new URL(import.meta.env.VITE_API_URL).host 
           : window.location.host);
@@ -289,11 +295,12 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
       wsRef.current = ws;
 
       ws.onopen = () => {
-        if (cleanedUp) {
+        if (cleanedUp || connectSeqRef.current !== mySeq) {
           ws.close();
           return;
         }
         console.log('[WS] 已连接');
+        reconnectAttemptsRef.current = 0;
         const authMsg: WsMessage = {
           type: 'auth',
           payload: { token },
@@ -320,7 +327,7 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
         console.log('[WS] 连接关闭', event.code, event.reason);
         clearTimers();
 
-        if (cleanedUp) return;
+        if (cleanedUp || connectSeqRef.current !== mySeq) return;
 
         if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttemptsRef.current++;
@@ -335,11 +342,17 @@ export function useWebSocket(externalWsRef?: React.MutableRefObject<WebSocket | 
       };
     }
 
-    connect();
+    // 延迟连接，让 StrictMode 完成双重挂载/卸载周期后再连接
+    const connectTimer = setTimeout(() => {
+      if (!cleanedUp && connectSeqRef.current === mySeq) {
+        connect();
+      }
+    }, 100);
 
     return () => {
       cleanedUp = true;
       clearTimers();
+      clearTimeout(connectTimer);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
